@@ -584,7 +584,6 @@ st.title("📊 EDI Corporate Actions Viewer")
 st.caption("Live data from Exchange Data International (EDI) API")
 
 if not fetch_btn:
-    st.info("👈 Configure query parameters in the sidebar and click **Fetch Corporate Actions**.")
     with st.expander("📖 Classification Logic Reference", expanded=False):
         st.markdown("""
         **Dividends**
@@ -630,35 +629,47 @@ if not isin:
     st.error("⚠️ Please enter an ISIN.")
     st.stop()
 
-url = (
-    f"https://api3.exchange-data.com/GetHistoricalCorporateActions"
-    f"?format=JSON&ISIN={isin}"
-    f"{'&operationalMic=' + op_mic if op_mic else ''}"
-    f"{'&fromexdate=' + from_date.strftime('%Y-%m-%d') if from_date else ''}"
-    f"{'&toexdate='   + to_date.strftime('%Y-%m-%d')   if to_date   else ''}"
-)
-
-with st.spinner("Fetching data from EDI API..."):
-    try:
-        response    = requests.get(url, headers={"authorization": api_key}, timeout=30)
-        rec_count   = response.headers.get("X-Record-Count",      "–")
-        total_recs  = response.headers.get("X-Total-Records",     "–")
-        rate_remain = response.headers.get("X-Ratelimit-Remaining","–")
-        rate_limit  = response.headers.get("X-Ratelimit-Limit",   "–")
-        if response.status_code != 200:
-            st.error(f"API Error {response.status_code}: {response.text[:500]}")
+# Cache results in session_state — only re-fetch when button is clicked
+if fetch_btn:
+    url = (
+        f"https://api3.exchange-data.com/GetHistoricalCorporateActions"
+        f"?format=JSON&ISIN={isin}"
+        f"{'&operationalMic=' + op_mic if op_mic else ''}"
+        f"{'&fromexdate=' + from_date.strftime('%Y-%m-%d') if from_date else ''}"
+        f"{'&toexdate='   + to_date.strftime('%Y-%m-%d')   if to_date   else ''}"
+    )
+    with st.spinner("Fetching data from EDI API..."):
+        try:
+            response = requests.get(url, headers={"authorization": api_key}, timeout=30)
+            st.session_state["edi_records"]     = response.json().get("jsondata", [])
+            st.session_state["edi_rec_count"]   = response.headers.get("X-Record-Count",       "–")
+            st.session_state["edi_total_recs"]  = response.headers.get("X-Total-Records",      "–")
+            st.session_state["edi_rate_remain"] = response.headers.get("X-Ratelimit-Remaining","–")
+            st.session_state["edi_rate_limit"]  = response.headers.get("X-Ratelimit-Limit",    "–")
+            st.session_state["edi_isin"]        = isin
+            if response.status_code != 200:
+                st.error(f"API Error {response.status_code}: {response.text[:500]}")
+                st.stop()
+        except requests.exceptions.ConnectionError:
+            st.error("❌ Could not connect to EDI API.")
             st.stop()
-        records = response.json().get("jsondata", [])
-    except requests.exceptions.ConnectionError:
-        st.error("❌ Could not connect to EDI API.")
-        st.stop()
-    except Exception as e:
-        st.error(f"❌ Unexpected error: {e}")
-        st.stop()
+        except Exception as e:
+            st.error(f"❌ Unexpected error: {e}")
+            st.stop()
+
+if "edi_records" not in st.session_state:
+    st.info("👈 Configure query parameters in the sidebar and click **Fetch Corporate Actions**.")
+    st.stop()
+
+records     = st.session_state["edi_records"]
+rec_count   = st.session_state["edi_rec_count"]
+total_recs  = st.session_state["edi_total_recs"]
+rate_remain = st.session_state["edi_rate_remain"]
+rate_limit  = st.session_state["edi_rate_limit"]
 
 # ── Meta ──────────────────────────────────────────────────────────────────────
 m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("ISIN", isin)
+m1.metric("ISIN", st.session_state.get("edi_isin", isin))
 m2.metric("Records Returned", rec_count)
 m3.metric("Total Records", total_recs)
 m4.metric("Rate Limit", rate_limit)
@@ -772,10 +783,11 @@ with tab2:
 
 with tab3:
     if len(df) > 0:
-        event_options = [
-            f"{row['eventid']} | {row['Event_Type']} | {row.get('issuername','')} | Ex: {row['exdt']}"
-            for _, row in df.iterrows()
-        ]
+        def event_label(row):
+            date_hint = row["exdt"] or row.get("Creation_Date", "")[:10] or row.get("feedgendate", "")[:10]
+            return f"{row['eventid']} | {row['Event_Type']} — {row.get('Subtype','')} | {row.get('issuername','')} | {date_hint}"
+
+        event_options = [event_label(row) for _, row in df.iterrows()]
         selected = st.selectbox("Select Event", event_options)
         idx = event_options.index(selected)
         sel = df.iloc[idx]
@@ -786,17 +798,19 @@ with tab3:
             is_deal = evt in ("Takeover", "Spin-Off", "Stock Distribution", "Merger")
             if is_deal:
                 detail = {
-                    "Event_Type":          sel.get("Event_Type"),
-                    "Subtype":             sel.get("Subtype"),
+                    "Event_Type": sel.get("Event_Type"),
+                    "Subtype":    sel.get("Subtype"),
                 }
+                # Takeover-specific fields
                 if evt == "Takeover":
                     detail.update({
                         "Offeror":             sel.get("MA_Offeror"),
                         "Hostile":             sel.get("MA_Hostile"),
-                        "Mandatory/Voluntary": sel.get("MA_Mand_Vol"),
                         "Deal_Subtype_Code":   sel.get("MA_Event_Subtype"),
                     })
+                # All deal types
                 detail.update({
+                    "Mandatory_Voluntary": sel.get("MA_Mand_Vol"),
                     "Counterparty_Ticker": sel.get("MA_Offeror_Ticker"),
                     "Counterparty_ISIN":   sel.get("MA_Offeror_ISIN"),
                     "Spun_Off_Terms":      sel.get("Spun_Off_Terms"),
@@ -815,7 +829,7 @@ with tab3:
                 })
                 st.json({k: v for k, v in detail.items() if v not in (None, "")})
             else:
-                st.json({
+                st.json({k: v for k, v in {
                     "Event_Type":        sel.get("Event_Type"),
                     "Subtype":           sel.get("Subtype"),
                     "Dividend_Amount":   sel.get("Dividend_Amount"),
@@ -829,17 +843,18 @@ with tab3:
                     "Sub_Ratio":         sel.get("Sub_Ratio"),
                     "Default_Option":    sel.get("Default_Option"),
                     "Election_Deadline": sel.get("optionelectiondt"),
-                })
+                }.items() if v not in (None, "")})
             st.markdown("**⏱️ Lifecycle**")
-            st.json({
+            st.json({k: v for k, v in {
+                "Creation_Date": sel.get("Creation_Date"),
                 "Feed_Gen_Date": sel.get("feedgendate"),
                 "Evt_Action":    sel.get("evtactioncd"),
                 "LST_Action":    sel.get("lstactioncd"),
                 "NTS_Action":    sel.get("ntsactioncd"),
-            })
+            }.items() if v not in (None, "")})
         with c2:
             st.markdown("**📄 Raw Fields**")
-            st.json({col: sel.get(col, "") for col in RAW_COLUMNS if col in sel})
+            st.json({col: sel.get(col, "") for col in RAW_COLUMNS if sel.get(col) not in (None, "")})
 
 # ── Export ────────────────────────────────────────────────────────────────────
 st.divider()
