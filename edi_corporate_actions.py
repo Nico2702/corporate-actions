@@ -44,10 +44,9 @@ EVENT_TYPE_COLORS = {
     "Cash + Stock Dividend":  "badge-stock",
     "Stock Split":            "badge-split",
     "Rights Issue":           "badge-rights",
-    "Takeover":               "badge-takeover",
+    "Merger & Acquisition":   "badge-takeover",
     "Spin-Off":               "badge-demerger",
     "Stock Distribution":     "badge-demerger",
-    "Merger":                 "badge-merger",
     "Other":                  "badge-other",
 }
 
@@ -95,7 +94,7 @@ def classify_event(row: dict) -> dict:
         "split_ratio": "",
         "subscription_price": "", "subscription_currency": "", "subscription_ratio": "",
         # MA / Deal fields (shared across TKOVR, DMRGR, MRGR, DIST)
-        "ma_subtype": "", "ma_offeror": "", "ma_hostile": "",
+        "ma_subtype": "", "ma_deal_type": "", "ma_offeror": "", "ma_hostile": "",
         "ma_cash_price": "", "ma_cash_currency": "",
         "ma_stock_ratio": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
         "ma_mixed_cash": "", "ma_mixed_currency": "", "ma_mixed_stock_ratio": "",
@@ -124,40 +123,42 @@ def classify_event(row: dict) -> dict:
 
     # ── TKOVR ─────────────────────────────────────────────────────────────────
     if eventcd == "TKOVR":
-        result["event_type"]              = "Takeover"
+        result["event_type"]             = "Merger & Acquisition"
+        result["ma_subtype"]             = ""
         result["ma_offeror"]             = row.get("offerorname") or ""
         result["ma_hostile"]             = row.get("hostile")     or ""
         result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
         result["ma_event_subtype"]       = row.get("eventsubtypecd") or ""
         if paytypecd == "C":
-            result["ma_subtype"]       = "Cash"
+            result["ma_deal_type"]     = "Cash"
             result["ma_cash_price"]    = row.get("minimumprice") or row.get("maximumprice") or ""
             result["ma_cash_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
         elif paytypecd == "S":
-            result["ma_subtype"]        = "Stock"
-            result["ma_offeror_isin"]   = row.get("outisin")          or ""
-            result["ma_offeror_ticker"] = row.get("outbbgcompticker")  or ""
+            result["ma_deal_type"]      = "Stock"
+            result["ma_offeror_isin"]   = row.get("outisin")         or ""
+            result["ma_offeror_ticker"] = row.get("outbbgcompticker") or ""
             ratio = safe_div(rationew, ratioold)
             result["ma_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
         elif paytypecd == "B":
-            result["ma_subtype"]           = "Mixed (Cash + Stock)"
+            result["ma_deal_type"]         = "Cash & Stock"
             result["ma_mixed_cash"]        = row.get("minimumprice") or row.get("maximumprice") or ""
             result["ma_mixed_currency"]    = row.get("ratecurencd") or row.get("tradingcurencd") or ""
             result["ma_cash_currency"]     = row.get("ratecurencd") or row.get("tradingcurencd") or ""
-            result["ma_offeror_isin"]      = row.get("outisin")          or ""
-            result["ma_offeror_ticker"]    = row.get("outbbgcompticker")  or ""
+            result["ma_offeror_isin"]      = row.get("outisin")         or ""
+            result["ma_offeror_ticker"]    = row.get("outbbgcompticker") or ""
             ratio = safe_div(rationew, ratioold)
             result["ma_mixed_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
         elif paytypecd == "D":
-            result["ma_subtype"] = "Debenture"
+            result["ma_deal_type"] = "Debenture"
         else:
-            result["ma_subtype"] = paytypecd
+            result["ma_deal_type"] = paytypecd
         return result
 
     # ── DMRGR (Spin-Off / Demerger) ───────────────────────────────────────────
     if eventcd == "DMRGR":
         result["event_type"]             = "Spin-Off"
         result["ma_subtype"]             = "Demerger"
+        result["ma_deal_type"]           = "Stock"
         result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
         result["ma_offeror_ticker"]      = row.get("outbbgcompticker") or ""
         result["ma_offeror_isin"]        = row.get("outisin") or ""
@@ -166,7 +167,6 @@ def classify_event(row: dict) -> dict:
         ratio = safe_div(rationew, ratioold)
         if ratio is not None:
             rn = float(rationew); ro = float(ratioold)
-            # Format: "1 : 25" (new shares per old shares)
             if rn == int(rn) and ro == int(ro):
                 result["ma_stock_ratio"] = f"{int(rn)} : {int(ro)}"
             else:
@@ -175,8 +175,9 @@ def classify_event(row: dict) -> dict:
 
     # ── MRGR (Merger — target distributes acquirer shares) ────────────────────
     if eventcd == "MRGR":
-        result["event_type"]             = "Merger"
-        result["ma_subtype"]             = "Stock" if paytypecd == "S" else (paytypecd or "")
+        result["event_type"]             = "Merger & Acquisition"
+        result["ma_subtype"]             = ""
+        result["ma_deal_type"]           = "Stock" if paytypecd == "S" else ("Cash" if paytypecd == "C" else (paytypecd or "Stock"))
         result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
         result["ma_offeror_ticker"]      = row.get("outbbgcompticker") or ""
         result["ma_offeror_isin"]        = row.get("outisin") or ""
@@ -195,6 +196,7 @@ def classify_event(row: dict) -> dict:
     if eventcd == "DIST":
         result["event_type"]             = "Stock Distribution"
         result["ma_subtype"]             = "Share Distribution"
+        result["ma_deal_type"]           = "Stock"
         result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
         result["ma_offeror_ticker"]      = row.get("outbbgcompticker") or ""
         result["ma_offeror_isin"]        = row.get("outisin") or ""
@@ -325,7 +327,7 @@ def classify_event(row: dict) -> dict:
     if eventcd == "ANN":
         related = (row.get("relatedeventcd") or "").upper().strip()
         if related == "MRGR":
-            result["event_type"] = "Merger"
+            result["event_type"] = "Merger & Acquisition"
             result["ma_subtype"] = "Announcement"
             result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
         elif related == "DMRGR":
@@ -333,7 +335,7 @@ def classify_event(row: dict) -> dict:
             result["ma_subtype"] = "Announcement"
             result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
         elif related == "TKOVR":
-            result["event_type"] = "Takeover"
+            result["event_type"] = "Merger & Acquisition"
             result["ma_subtype"] = "Announcement"
             result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
         return result
@@ -430,6 +432,7 @@ def merge_events(records_list):
 # ── Step 3: Build rows ────────────────────────────────────────────────────────
 MA_FIELDS = [
     "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
+    "Deal_Type",
     "MA_Cash_Price", "MA_Cash_Currency",
     "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
     "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
@@ -459,63 +462,64 @@ def build_rows(processed_records, show_ignored):
 
         if is_tkovr_election:
             paytypes = r.get("_tkovr_paytypes", [])
-            label_map = {"C": "Cash", "S": "Stock", "B": "Mixed", "D": "Debenture"}
-            subtype_label = " + ".join(label_map.get(p, p) for p in paytypes)
-            row["Event_Type"]              = "Takeover"
-            row["Subtype"]                 = f"Election ({subtype_label})"
-            row["MA_Offeror"]              = r.get("offerorname", "")
-            row["MA_Hostile"]              = r.get("hostile", "")
-            row["MA_Mand_Vol"]             = r.get("mandvoluflag", "")
-            row["MA_Event_Subtype"]        = r.get("eventsubtypecd", "")
-            row["MA_Cash_Price"]           = r.get("_ma_cash_price", "")
-            row["MA_Cash_Currency"]        = r.get("_ma_cash_currency", "")
-            row["MA_Stock_Ratio"]          = r.get("_ma_stock_ratio", "")
-            row["Spun_Off_Terms"]          = r.get("_ma_stock_ratio", "")  # already decimal for TKOVR
-            row["MA_Mixed_Cash"]           = r.get("_ma_mixed_cash", "")
-            row["MA_Mixed_Currency"]       = r.get("_ma_mixed_currency", "")
-            row["MA_Mixed_Ratio"]          = r.get("_ma_mixed_stock_ratio", "")
-            row["MA_Offeror_ISIN"]         = r.get("_ma_offeror_isin", "")
-            row["MA_Offeror_Ticker"]       = r.get("_ma_offeror_ticker", "")
-            row["MA_Close_Date"]           = r.get("closedt", "")
+            label_map = {"C": "Cash", "S": "Stock", "B": "Cash & Stock", "D": "Debenture"}
+            deal_type_label = " + ".join(label_map.get(p, p) for p in paytypes)
+            row["Event_Type"]        = "Merger & Acquisition"
+            row["Subtype"]           = "Election"
+            row["Deal_Type"]         = deal_type_label
+            row["MA_Offeror"]        = r.get("offerorname", "")
+            row["MA_Hostile"]        = r.get("hostile", "")
+            row["MA_Mand_Vol"]       = r.get("mandvoluflag", "")
+            row["MA_Event_Subtype"]  = r.get("eventsubtypecd", "")
+            row["MA_Cash_Price"]     = r.get("_ma_cash_price", "")
+            row["MA_Cash_Currency"]  = r.get("_ma_cash_currency", "")
+            row["MA_Stock_Ratio"]    = r.get("_ma_stock_ratio", "")
+            row["Spun_Off_Terms"]    = r.get("_ma_stock_ratio", "")
+            row["MA_Mixed_Cash"]     = r.get("_ma_mixed_cash", "")
+            row["MA_Mixed_Currency"] = r.get("_ma_mixed_currency", "")
+            row["MA_Mixed_Ratio"]    = r.get("_ma_mixed_stock_ratio", "")
+            row["MA_Offeror_ISIN"]   = r.get("_ma_offeror_isin", "")
+            row["MA_Offeror_Ticker"] = r.get("_ma_offeror_ticker", "")
+            row["MA_Close_Date"]     = r.get("closedt", "")
 
-        elif cl["event_type"] == "Takeover":
-            row["Event_Type"]              = "Takeover"
-            row["Subtype"]                 = cl["ma_subtype"]
-            row["MA_Offeror"]              = cl["ma_offeror"]
-            row["MA_Hostile"]              = cl["ma_hostile"]
-            row["MA_Mand_Vol"]             = cl["ma_mandatory_voluntary"]
-            row["MA_Event_Subtype"]        = cl["ma_event_subtype"]
-            row["MA_Cash_Price"]           = cl["ma_cash_price"]
-            row["MA_Cash_Currency"]        = cl["ma_cash_currency"]
-            row["MA_Stock_Ratio"]          = cl["ma_stock_ratio"]
+        elif cl["event_type"] == "Merger & Acquisition":
+            row["Event_Type"]        = "Merger & Acquisition"
+            row["Subtype"]           = cl["ma_subtype"]   # "" or "Announcement"
+            row["Deal_Type"]         = cl["ma_deal_type"]
+            row["MA_Offeror"]        = cl["ma_offeror"]
+            row["MA_Hostile"]        = cl["ma_hostile"]
+            row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
+            row["MA_Event_Subtype"]  = cl["ma_event_subtype"]
+            row["MA_Cash_Price"]     = cl["ma_cash_price"]
+            row["MA_Cash_Currency"]  = cl["ma_cash_currency"]
+            row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
             spun_terms = safe_div(r.get("rationew"), r.get("ratioold"))
-            row["Spun_Off_Terms"]          = f"{spun_terms:.6f}" if spun_terms else ""
-            row["MA_Mixed_Cash"]           = cl["ma_mixed_cash"]
-            row["MA_Mixed_Currency"]       = cl.get("ma_mixed_currency", "")
-            row["MA_Mixed_Ratio"]          = cl["ma_mixed_stock_ratio"]
-            row["MA_Offeror_ISIN"]         = cl["ma_offeror_isin"]
-            row["MA_Offeror_Ticker"]       = cl["ma_offeror_ticker"]
-            row["MA_Close_Date"]           = r.get("closedt", "")
+            row["Spun_Off_Terms"]    = f"{spun_terms:.6f}" if spun_terms else ""
+            row["MA_Mixed_Cash"]     = cl["ma_mixed_cash"]
+            row["MA_Mixed_Currency"] = cl["ma_mixed_currency"]
+            row["MA_Mixed_Ratio"]    = cl["ma_mixed_stock_ratio"]
+            row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
+            row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
+            row["MA_Effective_Date"] = cl["ma_effective_date"]
+            row["MA_Exp_Completion"] = cl["ma_exp_completion"]
+            row["MA_Merger_Status"]  = cl["ma_merger_status"]
+            row["MA_Close_Date"]     = r.get("closedt", "")
 
-        elif cl["event_type"] in ("Spin-Off", "Stock Distribution", "Merger"):
-            row["Event_Type"]          = cl["event_type"]
-            row["Subtype"]             = cl["ma_subtype"]
-            row["MA_Mand_Vol"]         = cl["ma_mandatory_voluntary"]
-            row["MA_Stock_Ratio"]      = cl["ma_stock_ratio"]
+        elif cl["event_type"] in ("Spin-Off", "Stock Distribution"):
+            row["Event_Type"]        = cl["event_type"]
+            row["Subtype"]           = cl["ma_subtype"]   # "Demerger", "Share Distribution", "Announcement"
+            row["Deal_Type"]         = cl["ma_deal_type"]
+            row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
+            row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
             spun_terms = safe_div(r.get("rationew"), r.get("ratioold"))
-            row["Spun_Off_Terms"]      = f"{spun_terms:.6f}" if spun_terms else ""
-            row["MA_Offeror_ISIN"]     = cl["ma_offeror_isin"]
-            row["MA_Offeror_Ticker"]   = cl["ma_offeror_ticker"]
-            row["MA_Effective_Date"]   = cl["ma_effective_date"]
-            row["MA_Exp_Completion"]   = cl["ma_exp_completion"]
-            row["MA_Merger_Status"]    = cl["ma_merger_status"]
-            row["MA_Cash_Price"]       = cl["ma_cash_price"]
-            row["MA_Cash_Currency"]    = cl["ma_cash_currency"]
-
-        elif cl["event_type"] == "Takeover" and cl["ma_subtype"] == "Announcement":
-            row["Event_Type"]          = "Takeover"
-            row["Subtype"]             = "Announcement"
-            row["MA_Mand_Vol"]         = cl["ma_mandatory_voluntary"]
+            row["Spun_Off_Terms"]    = f"{spun_terms:.6f}" if spun_terms else ""
+            row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
+            row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
+            row["MA_Effective_Date"] = cl["ma_effective_date"]
+            row["MA_Exp_Completion"] = cl["ma_exp_completion"]
+            row["MA_Merger_Status"]  = cl["ma_merger_status"]
+            row["MA_Cash_Price"]     = cl["ma_cash_price"]
+            row["MA_Cash_Currency"]  = cl["ma_cash_currency"]
 
         elif is_election:
             row["Event_Type"]        = "Cash or Stock Dividend"
@@ -574,7 +578,7 @@ with st.sidebar:
         options=["Cash Dividend", "Special Dividend", "Stock Dividend",
                  "Cash or Stock Dividend", "Cash + Stock Dividend",
                  "Stock Split", "Rights Issue",
-                 "Takeover", "Spin-Off", "Stock Distribution", "Merger",
+                 "Merger & Acquisition", "Spin-Off", "Stock Distribution",
                  "Other"],
         default=[]
     )
@@ -607,19 +611,18 @@ if not fetch_btn:
         | Rights Issue | — | `eventcd` ∈ {RTS,ENT} |
 
         **Takeovers / M&A / Spin-Offs**
-        | Event Type | Subtype | EDI Condition |
-        |---|---|---|
-        | Takeover | Cash | `eventcd`=TKOVR, `paytypecd`=C → `minimumprice` |
-        | Takeover | Stock | `eventcd`=TKOVR, `paytypecd`=S → `rationew/ratioold`, `outisin` |
-        | Takeover | Mixed (Cash + Stock) | `eventcd`=TKOVR, `paytypecd`=B |
-        | Takeover | Debenture | `eventcd`=TKOVR, `paytypecd`=D |
-        | Takeover | Election (multiple) | `eventcd`=TKOVR, multiple optionids merged |
-        | Spin-Off | Demerger | `eventcd`=DMRGR, `paytypecd`=S → ratio, `outisin` (spunoff co.) |
-        | Spin-Off | Announcement | `eventcd`=ANN, `relatedeventcd`=DMRGR |
-        | Stock Distribution | Share Distribution | `eventcd`=DIST → exact ratio post-DMRGR/MRGR |
-        | Merger | Stock | `eventcd`=MRGR, `paytypecd`=S → acquirer shares per target share |
-        | Merger | Announcement | `eventcd`=ANN, `relatedeventcd`=MRGR |
-        | Takeover | Announcement | `eventcd`=ANN, `relatedeventcd`=TKOVR |
+        | Event Type | Subtype | Deal Type | EDI Condition |
+        |---|---|---|---|
+        | Merger & Acquisition | — | Cash | `eventcd`=TKOVR, `paytypecd`=C |
+        | Merger & Acquisition | — | Stock | `eventcd`=TKOVR, `paytypecd`=S |
+        | Merger & Acquisition | — | Cash & Stock | `eventcd`=TKOVR, `paytypecd`=B |
+        | Merger & Acquisition | — | Debenture | `eventcd`=TKOVR, `paytypecd`=D |
+        | Merger & Acquisition | Election | Cash + Stock + … | `eventcd`=TKOVR, multiple optionids |
+        | Merger & Acquisition | — | Stock | `eventcd`=MRGR, `paytypecd`=S |
+        | Merger & Acquisition | Announcement | — | `eventcd`=ANN, `relatedeventcd`=MRGR/TKOVR |
+        | Spin-Off | Demerger | Stock | `eventcd`=DMRGR |
+        | Spin-Off | Announcement | — | `eventcd`=ANN, `relatedeventcd`=DMRGR |
+        | Stock Distribution | Share Distribution | Stock | `eventcd`=DIST |
         """)
     # Only stop if there's no cached data to show
     if "edi_records" not in st.session_state:
@@ -731,6 +734,7 @@ with tab1:
     ]
     ma_display = [
         "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
+        "Deal_Type",
         "MA_Cash_Price", "MA_Cash_Currency",
         "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
         "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
@@ -766,6 +770,7 @@ with tab1:
             "MA_Hostile":           st.column_config.TextColumn("Hostile",              width=70),
             "MA_Mand_Vol":          st.column_config.TextColumn("M/V",                 width=50),
             "MA_Event_Subtype":     st.column_config.TextColumn("Deal Subtype",         width=120),
+            "Deal_Type":            st.column_config.TextColumn("Deal Type",             width=120),
             "Spun_Off_Terms":       st.column_config.NumberColumn("Spun-Off Terms",     width=115, format="%.6f"),
             "MA_Stock_Ratio":       st.column_config.TextColumn("Stock/Dist Ratio",     width=120),
             "MA_Mixed_Ratio":       st.column_config.TextColumn("Mixed Ratio",          width=100),
@@ -807,15 +812,16 @@ with tab3:
             # ── Classification ─────────────────────────────────────────────
             st.markdown("**🏷️ Classification**")
             evt = str(sel.get("Event_Type", ""))
-            is_deal = evt in ("Takeover", "Spin-Off", "Stock Distribution", "Merger")
+            is_deal = evt in ("Merger & Acquisition", "Spin-Off", "Stock Distribution")
 
             if is_deal:
                 detail = {
                     "Event_Type":          sel.get("Event_Type"),
                     "Subtype":             sel.get("Subtype"),
+                    "Deal_Type":           sel.get("Deal_Type"),
                     "Mandatory_Voluntary": sel.get("MA_Mand_Vol"),
                 }
-                if evt == "Takeover":
+                if evt == "Merger & Acquisition":
                     detail.update({
                         "Offeror":           sel.get("MA_Offeror"),
                         "Hostile":           sel.get("MA_Hostile"),
