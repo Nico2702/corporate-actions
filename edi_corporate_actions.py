@@ -714,15 +714,10 @@ st.divider()
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_col, toggle_col = st.columns([6, 2])
-with tab_col:
-    tab1, tab2, tab3 = st.tabs(["🏷️ Classified Events", "📄 Raw API Fields", "🔎 Event Detail"])
-with toggle_col:
-    st.markdown("<div style='padding-top:8px'>", unsafe_allow_html=True)
-    hide_other = st.toggle("Hide 'Other' events", value=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+tab1, tab2, tab3 = st.tabs(["🏷️ Classified Events", "📄 Raw API Fields", "🔎 Event Detail"])
 
 with tab1:
+    hide_other = st.toggle("Hide 'Other' events", value=True)
     df_display = df[df["Event_Type"] != "Other"] if hide_other else df
     div_display = [
         "Event_Type", "Subtype", "eventcd", "marker", "paytypecd",
