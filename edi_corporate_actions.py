@@ -383,7 +383,7 @@ if "feedgendate" in raw_df.columns:
     raw_df = (
         raw_df
         .sort_values("_feedgendate_ts", ascending=False)
-        .drop_duplicates(subset=["eventid", "optionid"], keep="first")
+        .drop_duplicates(subset=["eventid", "optionid", "operationalmic"], keep="first")
         .drop(columns=["_feedgendate_ts"])
     )
 deduped_records = raw_df.to_dict(orient="records")
@@ -397,10 +397,11 @@ def merge_election_events(records_list):
     from collections import defaultdict
     groups = defaultdict(list)
     for r in records_list:
-        groups[r.get("eventid", "")].append(r)
+        key = (r.get("eventid", ""), r.get("operationalmic", ""))
+        groups[key].append(r)
 
     merged = []
-    for eid, group in groups.items():
+    for (eid, mic), group in groups.items():
         if len(group) == 1:
             merged.append(group[0])
             continue
