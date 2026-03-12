@@ -97,7 +97,7 @@ def classify_event(row: dict) -> dict:
         "ma_subtype": "", "ma_deal_type": "", "ma_offeror": "", "ma_hostile": "",
         "ma_cash_price": "", "ma_cash_currency": "",
         "ma_stock_ratio": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
-        "ma_mixed_cash": "", "ma_mixed_currency": "", "ma_mixed_stock_ratio": "",
+        "ma_cash_terms": "", "ma_cash_terms_currency": "", "ma_mixed_stock_ratio": "",
         "ma_mandatory_voluntary": "",
         "ma_effective_date": "", "ma_exp_completion": "",
         "ma_merger_status": "", "ma_event_subtype": "",
@@ -141,13 +141,13 @@ def classify_event(row: dict) -> dict:
             result["ma_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
         elif paytypecd == "B":
             result["ma_deal_type"]         = "Cash & Stock"
-            result["ma_mixed_cash"]        = row.get("minimumprice") or row.get("maximumprice") or ""
-            result["ma_mixed_currency"]    = row.get("ratecurencd") or row.get("tradingcurencd") or ""
+            result["ma_cash_terms"]        = row.get("minimumprice") or row.get("maximumprice") or ""
+            result["ma_cash_terms_currency"]    = row.get("ratecurencd") or row.get("tradingcurencd") or ""
             result["ma_cash_currency"]     = row.get("ratecurencd") or row.get("tradingcurencd") or ""
             result["ma_offeror_isin"]      = row.get("outisin")         or ""
             result["ma_offeror_ticker"]    = row.get("outbbgcompticker") or ""
             ratio = safe_div(rationew, ratioold)
-            result["ma_mixed_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
+            result["ma_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
         elif paytypecd == "D":
             result["ma_deal_type"] = "Debenture"
         else:
@@ -392,12 +392,15 @@ def merge_events(records_list):
                 ratio = safe_div(stock_opt.get("rationew"), stock_opt.get("ratioold"))
                 base["_ma_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
             if mixed_opt:
-                base["_ma_mixed_cash"]        = mixed_opt.get("minimumprice") or mixed_opt.get("maximumprice") or ""
-                base["_ma_mixed_currency"]    = mixed_opt.get("ratecurencd") or mixed_opt.get("tradingcurencd") or ""
+                base["_ma_cash_terms"]        = mixed_opt.get("minimumprice") or mixed_opt.get("maximumprice") or ""
+                base["_ma_cash_terms_currency"]    = mixed_opt.get("ratecurencd") or mixed_opt.get("tradingcurencd") or ""
                 base["_ma_offeror_isin"]      = base.get("_ma_offeror_isin")   or mixed_opt.get("outisin")          or ""
                 base["_ma_offeror_ticker"]    = base.get("_ma_offeror_ticker") or mixed_opt.get("outbbgcompticker")  or ""
                 ratio = safe_div(mixed_opt.get("rationew"), mixed_opt.get("ratioold"))
-                base["_ma_mixed_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
+                if ratio and not base.get("_ma_stock_ratio"):
+                    base["_ma_stock_ratio"] = f"{ratio:.6f}"
+                elif ratio:
+                    base["_ma_cash_terms_ratio"] = f"{ratio:.6f}"  # preserve for Mixed Cash component
 
             merged.append(base)
             continue
@@ -435,7 +438,7 @@ MA_FIELDS = [
     "Deal_Type",
     "MA_Cash_Price", "MA_Cash_Currency",
     "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
-    "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
+    "MA_Cash_Terms", "MA_Cash_Terms_Currency",
     "MA_Effective_Date", "MA_Exp_Completion",
     "MA_Merger_Status",
     "MA_Close_Date",
@@ -474,10 +477,6 @@ def build_rows(processed_records, show_ignored):
             row["MA_Cash_Price"]     = r.get("_ma_cash_price", "")
             row["MA_Cash_Currency"]  = r.get("_ma_cash_currency", "")
             row["MA_Stock_Ratio"]    = r.get("_ma_stock_ratio", "")
-            row["Spun_Off_Terms"]    = r.get("_ma_stock_ratio", "")
-            row["MA_Mixed_Cash"]     = r.get("_ma_mixed_cash", "")
-            row["MA_Mixed_Currency"] = r.get("_ma_mixed_currency", "")
-            row["MA_Mixed_Ratio"]    = r.get("_ma_mixed_stock_ratio", "")
             row["MA_Offeror_ISIN"]   = r.get("_ma_offeror_isin", "")
             row["MA_Offeror_Ticker"] = r.get("_ma_offeror_ticker", "")
             row["MA_Close_Date"]     = r.get("closedt", "")
@@ -493,11 +492,8 @@ def build_rows(processed_records, show_ignored):
             row["MA_Cash_Price"]     = cl["ma_cash_price"]
             row["MA_Cash_Currency"]  = cl["ma_cash_currency"]
             row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
-            spun_terms = safe_div(r.get("rationew"), r.get("ratioold"))
-            row["Spun_Off_Terms"]    = f"{spun_terms:.6f}" if spun_terms else ""
-            row["MA_Mixed_Cash"]     = cl["ma_mixed_cash"]
-            row["MA_Mixed_Currency"] = cl["ma_mixed_currency"]
-            row["MA_Mixed_Ratio"]    = cl["ma_mixed_stock_ratio"]
+            row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
+            row["MA_Cash_Terms_Currency"] = cl["ma_cash_terms_currency"]
             row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
             row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
             row["MA_Effective_Date"] = cl["ma_effective_date"]
@@ -737,7 +733,7 @@ with tab1:
         "Deal_Type",
         "MA_Cash_Price", "MA_Cash_Currency",
         "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
-        "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
+        "MA_Cash_Terms", "MA_Cash_Terms_Currency",
         "MA_Effective_Date", "MA_Exp_Completion",
         "MA_Merger_Status",
         "MA_Close_Date",
@@ -762,8 +758,8 @@ with tab1:
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
             "MA_Cash_Price":        st.column_config.NumberColumn("Cash Amount",        format="%.4f"),
             "MA_Cash_Currency":     st.column_config.TextColumn("Cash Currency",        width=110),
-            "MA_Mixed_Cash":        st.column_config.NumberColumn("Mixed Cash Amount",  format="%.4f"),
-            "MA_Mixed_Currency":    st.column_config.TextColumn("Mixed Currency",       width=110),
+            "MA_Cash_Terms":          st.column_config.NumberColumn("Cash Terms",          format="%.4f"),
+            "MA_Cash_Terms_Currency": st.column_config.TextColumn("Cash Terms Currency",  width=120),
             "Default_Option":       st.column_config.TextColumn("Default Option",       width=110),
             "optionelectiondt":     st.column_config.TextColumn("Election DL",          width=120),
             "MA_Offeror":           st.column_config.TextColumn("Offeror",              width=190),
@@ -773,7 +769,6 @@ with tab1:
             "Deal_Type":            st.column_config.TextColumn("Deal Type",             width=120),
             "Spun_Off_Terms":       st.column_config.NumberColumn("Spun-Off Terms",     width=115, format="%.6f"),
             "MA_Stock_Ratio":       st.column_config.TextColumn("Stock/Dist Ratio",     width=120),
-            "MA_Mixed_Ratio":       st.column_config.TextColumn("Mixed Ratio",          width=100),
             "MA_Offeror_ISIN":      st.column_config.TextColumn("Counterparty ISIN",    width=140),
             "MA_Offeror_Ticker":    st.column_config.TextColumn("Counterparty Ticker",  width=130),
             "MA_Effective_Date":    st.column_config.TextColumn("Effective Date",        width=120),
@@ -837,8 +832,7 @@ with tab3:
                     "Stock_Dist_Ratio":    sel.get("MA_Stock_Ratio"),
                     "Cash_Price":          sel.get("MA_Cash_Price"),
                     "Cash_Currency":       sel.get("MA_Cash_Currency"),
-                    "Mixed_Cash":          sel.get("MA_Mixed_Cash"),
-                    "Mixed_Stock_Ratio":   sel.get("MA_Mixed_Ratio"),
+                    "Mixed_Cash":          sel.get("MA_Cash_Terms"),
                     "Effective_Date":      sel.get("MA_Effective_Date"),
                     "Exp_Completion":      sel.get("MA_Exp_Completion"),
                     "Merger_Status":       sel.get("MA_Merger_Status"),
@@ -889,7 +883,7 @@ with tab3:
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
                             "MA_Cash_Price", "MA_Cash_Currency",
                             "MA_Stock_Ratio", "Spun_Off_Terms",
-                            "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
+                            "MA_Cash_Terms", "MA_Cash_Terms_Currency",
                             "MA_Offeror_ISIN", "MA_Offeror_Ticker",
                             "MA_Effective_Date", "MA_Exp_Completion",
                             "MA_Merger_Status", "MA_Close_Date", "Creation_Date"]
