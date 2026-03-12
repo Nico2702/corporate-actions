@@ -799,8 +799,11 @@ with tab3:
             date_hint = (row["exdt"] or
                          str(row.get("Creation_Date", ""))[:10] or
                          str(row.get("feedgendate", ""))[:10])
+            subtype   = row.get("Subtype", "")
+            deal_type = row.get("Deal_Type", "")
+            type_hint = " · ".join(filter(None, [subtype, deal_type])) or "—"
             return (f"{row['eventid']} | {row['Event_Type']} — "
-                    f"{row.get('Subtype','')} | {row.get('issuername','')} | {date_hint}")
+                    f"{type_hint} | {row.get('issuername','')} | {date_hint}")
 
         event_options = [_event_label(row) for _, row in df.iterrows()]
         selected = st.selectbox("Select Event", event_options, key="tab3_select")
@@ -876,9 +879,21 @@ with tab3:
             }.items() if v not in (None, "")})
 
         with c2:
-            # ── Raw Fields — all columns, nothing filtered ─────────────────
             st.markdown("**📄 Raw Fields**")
             st.json({col: sel.get(col, "") for col in RAW_COLUMNS})
+            st.markdown("**🔧 Derived Fields**")
+            derived_cols = ["Event_Type", "Subtype", "Deal_Type",
+                            "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
+                            "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio",
+                            "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
+                            "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
+                            "MA_Cash_Price", "MA_Cash_Currency",
+                            "MA_Stock_Ratio", "Spun_Off_Terms",
+                            "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
+                            "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+                            "MA_Effective_Date", "MA_Exp_Completion",
+                            "MA_Merger_Status", "MA_Close_Date", "Creation_Date"]
+            st.json({col: sel.get(col, "") for col in derived_cols})
 
 # ── Export ────────────────────────────────────────────────────────────────────
 st.divider()
