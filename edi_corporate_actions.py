@@ -228,24 +228,26 @@ def classify_event(row: dict) -> dict:
 
 # ── Raw field display config ──────────────────────────────────────────────────
 RAW_COLUMNS = [
-    "eventid", "eventcd", "marker", "paytypecd", "mandvoluflag",
+    "eventid", "optionid", "eventcd", "marker", "paytypecd", "mandvoluflag",
     "exdt", "paydt", "recorddt", "declarationdt",
     "grossdividend", "netdividend", "divrate", "cashback",
     "ratioold", "rationew", "ratecurencd",
     "issueprice", "entissueprice", "depfees",
     "outsectycd", "operationalmic", "isin", "issuername",
     "frequency", "periodenddt", "ntschangedt",
-    "lstactioncd", "ntsactioncd",
+    "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
+    "voting", "defaultoptionflag", "optionelectiondt",
 ]
 
 EVENT_TYPE_COLORS = {
-    "Cash Dividend":        "badge-cash",
-    "Special Dividend":     "badge-special",
-    "Stock Dividend":       "badge-stock",
-    "Cash + Stock Dividend":"badge-stock",
-    "Stock Split":          "badge-split",
-    "Rights Issue":         "badge-rights",
-    "Other":                "badge-other",
+    "Cash Dividend":          "badge-cash",
+    "Special Dividend":       "badge-special",
+    "Stock Dividend":         "badge-stock",
+    "Cash or Stock Dividend": "badge-stock",
+    "Cash + Stock Dividend":  "badge-stock",
+    "Stock Split":            "badge-split",
+    "Rights Issue":           "badge-rights",
+    "Other":                  "badge-other",
 }
 
 
@@ -274,7 +276,8 @@ with st.sidebar:
     event_type_filter = st.multiselect(
         "Filter by Event Type",
         options=["Cash Dividend", "Special Dividend", "Stock Dividend",
-                 "Cash + Stock Dividend", "Stock Split", "Rights Issue", "Other"],
+                 "Cash or Stock Dividend", "Cash + Stock Dividend",
+                 "Stock Split", "Rights Issue", "Other"],
         default=[]
     )
 
@@ -364,32 +367,140 @@ if not records:
     st.warning("No corporate action records found for the given parameters.")
     st.stop()
 
-# ── Classify + Build DataFrame ────────────────────────────────────────────────
+# ── Step 1: Deduplicate — per eventid+optionid keep latest feedgendate ────────
+def parse_feedgendate(val):
+    if not val:
+        return pd.Timestamp.min
+    try:
+        return pd.Timestamp(val)
+    except Exception:
+        return pd.Timestamp.min
+
+# Build raw dataframe for dedup
+raw_df = pd.DataFrame(records)
+if "feedgendate" in raw_df.columns:
+    raw_df["_feedgendate_ts"] = raw_df["feedgendate"].apply(parse_feedgendate)
+    raw_df = (
+        raw_df
+        .sort_values("_feedgendate_ts", ascending=False)
+        .drop_duplicates(subset=["eventid", "optionid"], keep="first")
+        .drop(columns=["_feedgendate_ts"])
+    )
+deduped_records = raw_df.to_dict(orient="records")
+
+# ── Step 2: Merge Election Events (voting=V, multiple optionids) ──────────────
+def merge_election_events(records_list):
+    """
+    Group by eventid. If voting=V and multiple optionids exist,
+    merge into a single row combining Cash (optionid=1) and Stock (optionid=2) data.
+    """
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r in records_list:
+        groups[r.get("eventid", "")].append(r)
+
+    merged = []
+    for eid, group in groups.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+
+        # Check if this is an election event
+        votings = [r.get("voting", "") for r in group]
+        is_election = any(v == "V" for v in votings)
+        option_ids  = [r.get("optionid", "") for r in group]
+
+        if not is_election or len(set(option_ids)) < 2:
+            # Not an election — keep all records separately
+            merged.extend(group)
+            continue
+
+        # Find cash option (optionid=1, paytypecd=C) and stock option (optionid=2, paytypecd=S)
+        cash_row  = next((r for r in group if str(r.get("optionid","")) == "1"), None)
+        stock_row = next((r for r in group if str(r.get("optionid","")) == "2"), None)
+
+        if not cash_row or not stock_row:
+            merged.extend(group)
+            continue
+
+        # Use cash_row as base (has grossdividend, netdividend, ratecurencd)
+        combined = dict(cash_row)
+        combined["_is_election"]         = True
+        combined["_opt1_paytypecd"]      = cash_row.get("paytypecd", "")
+        combined["_opt2_paytypecd"]      = stock_row.get("paytypecd", "")
+        combined["_opt1_grossdividend"]  = cash_row.get("grossdividend", "")
+        combined["_opt1_netdividend"]    = cash_row.get("netdividend", "")
+        combined["_opt1_defaultflag"]    = cash_row.get("defaultoptionflag", "")
+        combined["_opt2_rationew"]       = stock_row.get("rationew", "")
+        combined["_opt2_ratioold"]       = stock_row.get("ratioold", "")
+        combined["_opt2_defaultflag"]    = stock_row.get("defaultoptionflag", "")
+        combined["optionelectiondt"]     = stock_row.get("optionelectiondt", "") or cash_row.get("optionelectiondt", "")
+        # Keep stock ratio fields for classification
+        combined["rationew"]             = stock_row.get("rationew", "")
+        combined["ratioold"]             = stock_row.get("ratioold", "")
+        combined["paytypecd"]            = "B"  # signal both options present
+
+        merged.append(combined)
+
+    return merged
+
+processed_records = merge_election_events(deduped_records)
+
+# ── Step 3: Classify + Build Final DataFrame ──────────────────────────────────
 rows = []
-for r in records:
+for r in processed_records:
+    is_election = r.get("_is_election", False)
     classification = classify_event(r)
+
     if classification["ignore"] and not show_ignored:
         continue
 
     row = {}
-    # Raw fields
     for col in RAW_COLUMNS:
         row[col] = r.get(col, "")
 
-    # Derived fields
-    row["Event_Type"]          = classification["event_type"]
-    row["Subtype"]             = classification["subtype"]
-    row["Dividend_Amount"]     = classification["dividend_amount"]
-    row["Tax_Marker"]          = classification["tax_marker"]
-    row["Dividend_Currency"]   = classification["dividend_currency"]
-    row["Stock_Div_Pct"]       = classification["stock_dividend_pct"]
-    row["Stock_Div_Ratio"]     = classification["stock_dividend_ratio"]
-    row["Split_Ratio"]         = classification["split_ratio"]
-    row["Sub_Price"]           = classification["subscription_price"]
-    row["Sub_Currency"]        = classification["subscription_currency"]
-    row["Sub_Ratio"]           = classification["subscription_ratio"]
-    row["_ignored"]            = classification["ignore"]
+    # Override Event_Type for election events
+    if is_election:
+        row["Event_Type"]      = "Cash or Stock Dividend"
+        row["Subtype"]         = "Shareholder Election"
+        # Cash side
+        row["Dividend_Amount"] = r.get("_opt1_grossdividend") or r.get("_opt1_netdividend") or ""
+        row["Tax_Marker"]      = "GROSS"
+        row["Dividend_Currency"] = r.get("ratecurencd", "")
+        # Stock side
+        try:
+            rn = float(r.get("_opt2_rationew") or 0)
+            ro = float(r.get("_opt2_ratioold") or 0)
+            if ro:
+                row["Stock_Div_Pct"]   = f"{(rn/ro)*100:.4f}%"
+                row["Stock_Div_Ratio"] = f"{1+(rn/ro):.6f}"
+            else:
+                row["Stock_Div_Pct"]   = ""
+                row["Stock_Div_Ratio"] = ""
+        except (TypeError, ValueError):
+            row["Stock_Div_Pct"]   = ""
+            row["Stock_Div_Ratio"] = ""
+        # Default option — always Cash for election events (voting=V)
+        row["Default_Option"]  = "Cash"
+        row["Split_Ratio"]     = ""
+        row["Sub_Price"]       = ""
+        row["Sub_Currency"]    = ""
+        row["Sub_Ratio"]       = ""
+    else:
+        row["Event_Type"]      = classification["event_type"]
+        row["Subtype"]         = classification["subtype"]
+        row["Dividend_Amount"] = classification["dividend_amount"]
+        row["Tax_Marker"]      = classification["tax_marker"]
+        row["Dividend_Currency"] = classification["dividend_currency"]
+        row["Stock_Div_Pct"]   = classification["stock_dividend_pct"]
+        row["Stock_Div_Ratio"] = classification["stock_dividend_ratio"]
+        row["Split_Ratio"]     = classification["split_ratio"]
+        row["Sub_Price"]       = classification["subscription_price"]
+        row["Sub_Currency"]    = classification["subscription_currency"]
+        row["Sub_Ratio"]       = classification["subscription_ratio"]
+        row["Default_Option"]  = ""
 
+    row["_ignored"] = classification["ignore"]
     rows.append(row)
 
 df = pd.DataFrame(rows)
@@ -428,8 +539,9 @@ with tab1:
         "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
-        "lstactioncd", "ntsactioncd",
-        "eventid", "isin", "issuername", "operationalmic"
+        "Default_Option", "optionelectiondt",
+        "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
+        "eventid", "optionid", "isin", "issuername", "operationalmic",
     ]
     display_cols = [c for c in display_cols if c in df.columns]
     
@@ -444,9 +556,14 @@ with tab1:
             "paydt":            st.column_config.DateColumn("Pay Date"),
             "recorddt":         st.column_config.DateColumn("Record Date"),
             "Dividend_Amount":  st.column_config.NumberColumn("Div Amount", format="%.4f"),
-            "Sub_Price":        st.column_config.NumberColumn("Sub Price", format="%.4f"),
-            "lstactioncd":      st.column_config.TextColumn("LST Action", width=90),
-            "ntsactioncd":      st.column_config.TextColumn("NTS Action", width=90),
+            "Sub_Price":           st.column_config.NumberColumn("Sub Price", format="%.4f"),
+            "Default_Option":      st.column_config.TextColumn("Default Option", width=110),
+            "optionelectiondt":    st.column_config.TextColumn("Election Deadline", width=130),
+            "feedgendate":         st.column_config.TextColumn("Feed Gen Date", width=130),
+            "evtactioncd":         st.column_config.TextColumn("Evt Action", width=90),
+            "lstactioncd":         st.column_config.TextColumn("LST Action", width=90),
+            "ntsactioncd":         st.column_config.TextColumn("NTS Action", width=90),
+            "optionid":            st.column_config.TextColumn("Option ID", width=80),
         }
     )
 
@@ -479,6 +596,12 @@ with tab3:
                 "Sub_Price":         sel_row.get("Sub_Price"),
                 "Sub_Currency":      sel_row.get("Sub_Currency"),
                 "Sub_Ratio":         sel_row.get("Sub_Ratio"),
+                "Default_Option":    sel_row.get("Default_Option"),
+                "Election_Deadline": sel_row.get("optionelectiondt"),
+                "Feed_Gen_Date":     sel_row.get("feedgendate"),
+                "Evt_Action":        sel_row.get("evtactioncd"),
+                "LST_Action":        sel_row.get("lstactioncd"),
+                "NTS_Action":        sel_row.get("ntsactioncd"),
             })
         with c2:
             st.markdown("**📄 Raw Fields**")
