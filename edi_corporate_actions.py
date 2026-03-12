@@ -98,7 +98,7 @@ def classify_event(row: dict) -> dict:
         "ma_subtype": "", "ma_offeror": "", "ma_hostile": "",
         "ma_cash_price": "", "ma_cash_currency": "",
         "ma_stock_ratio": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
-        "ma_mixed_cash": "", "ma_mixed_stock_ratio": "",
+        "ma_mixed_cash": "", "ma_mixed_currency": "", "ma_mixed_stock_ratio": "",
         "ma_mandatory_voluntary": "",
         "ma_effective_date": "", "ma_exp_completion": "",
         "ma_merger_status": "", "ma_event_subtype": "",
@@ -142,6 +142,7 @@ def classify_event(row: dict) -> dict:
         elif paytypecd == "B":
             result["ma_subtype"]           = "Mixed (Cash + Stock)"
             result["ma_mixed_cash"]        = row.get("minimumprice") or row.get("maximumprice") or ""
+            result["ma_mixed_currency"]    = row.get("ratecurencd") or row.get("tradingcurencd") or ""
             result["ma_cash_currency"]     = row.get("ratecurencd") or row.get("tradingcurencd") or ""
             result["ma_offeror_isin"]      = row.get("outisin")          or ""
             result["ma_offeror_ticker"]    = row.get("outbbgcompticker")  or ""
@@ -490,6 +491,7 @@ def build_rows(processed_records, show_ignored):
             spun_terms = safe_div(r.get("rationew"), r.get("ratioold"))
             row["Spun_Off_Terms"]          = f"{spun_terms:.6f}" if spun_terms else ""
             row["MA_Mixed_Cash"]           = cl["ma_mixed_cash"]
+            row["MA_Mixed_Currency"]       = cl.get("ma_mixed_currency", "")
             row["MA_Mixed_Ratio"]          = cl["ma_mixed_stock_ratio"]
             row["MA_Offeror_ISIN"]         = cl["ma_offeror_isin"]
             row["MA_Offeror_Ticker"]       = cl["ma_offeror_ticker"]
@@ -754,8 +756,10 @@ with tab1:
             "recorddt":             st.column_config.DateColumn("Record Date"),
             "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",        format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
-            "MA_Cash_Price":        st.column_config.NumberColumn("Cash Price",         format="%.4f"),
-            "MA_Mixed_Cash":        st.column_config.NumberColumn("Mixed Cash",         format="%.4f"),
+            "MA_Cash_Price":        st.column_config.NumberColumn("Cash Amount",        format="%.4f"),
+            "MA_Cash_Currency":     st.column_config.TextColumn("Cash Currency",        width=110),
+            "MA_Mixed_Cash":        st.column_config.NumberColumn("Mixed Cash Amount",  format="%.4f"),
+            "MA_Mixed_Currency":    st.column_config.TextColumn("Mixed Currency",       width=110),
             "Default_Option":       st.column_config.TextColumn("Default Option",       width=110),
             "optionelectiondt":     st.column_config.TextColumn("Election DL",          width=120),
             "MA_Offeror":           st.column_config.TextColumn("Offeror",              width=190),
