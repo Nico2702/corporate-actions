@@ -57,8 +57,9 @@ RAW_COLUMNS = [
     "minimumprice", "maximumprice", "hostile",
     "unconditionaldt", "compulsoryacqdt",
     "frequency", "periodenddt", "ntschangedt",
-    "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
+    "eventcreatedt", "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
     "voting", "defaultoptionflag", "optionelectiondt",
+    "closedt",
 ]
 
 
@@ -349,10 +350,12 @@ def merge_events(records_list):
 # ── Step 3: Build rows ────────────────────────────────────────────────────────
 MA_FIELDS = ["MA_Offeror","MA_Hostile","MA_Mand_Vol","MA_Cash_Price",
               "MA_Cash_Currency","MA_Stock_Ratio","MA_Mixed_Cash",
-              "MA_Mixed_Currency","MA_Mixed_Ratio","MA_Offeror_ISIN","MA_Offeror_Ticker"]
+              "MA_Mixed_Currency","MA_Mixed_Ratio","MA_Offeror_ISIN","MA_Offeror_Ticker",
+              "MA_Close_Date"]
 DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio",
-              "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option"]
+              "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
+              "Creation_Date"]
 
 def build_rows(processed_records, show_ignored):
     rows = []
@@ -386,6 +389,7 @@ def build_rows(processed_records, show_ignored):
             row["MA_Mixed_Ratio"]    = r.get("_ma_mixed_stock_ratio", "")
             row["MA_Offeror_ISIN"]   = r.get("_ma_offeror_isin", "")
             row["MA_Offeror_Ticker"] = r.get("_ma_offeror_ticker", "")
+            row["MA_Close_Date"]     = r.get("closedt", "")
 
         elif cl["event_type"] == "Takeover":
             row["Event_Type"]         = "Takeover"
@@ -400,6 +404,7 @@ def build_rows(processed_records, show_ignored):
             row["MA_Mixed_Ratio"]    = cl["ma_mixed_stock_ratio"]
             row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
             row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
+            row["MA_Close_Date"]     = r.get("closedt", "")
 
         elif is_election:
             row["Event_Type"]        = "Cash or Stock Dividend"
@@ -426,6 +431,8 @@ def build_rows(processed_records, show_ignored):
             row["Sub_Ratio"]         = cl["subscription_ratio"]
 
         row["_ignored"] = cl["ignore"]
+        # Creation_Date — universal across all event types
+        row["Creation_Date"] = r.get("eventcreatedt", "")
         rows.append(row)
     return rows
 
@@ -586,8 +593,10 @@ with tab1:
         "MA_Cash_Price", "MA_Cash_Currency",
         "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
         "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
+        "MA_Close_Date",
     ]
     meta_display = [
+        "Creation_Date",
         "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
         "eventid", "optionid", "isin", "issuername", "operationalmic",
     ]
@@ -616,6 +625,8 @@ with tab1:
             "MA_Mixed_Ratio":    st.column_config.TextColumn("Mixed Ratio",       width=100),
             "MA_Offeror_ISIN":   st.column_config.TextColumn("Offeror ISIN",      width=130),
             "MA_Offeror_Ticker": st.column_config.TextColumn("Offeror Ticker",    width=110),
+            "MA_Close_Date":     st.column_config.TextColumn("MA Close Date",      width=120),
+            "Creation_Date":     st.column_config.TextColumn("Creation Date",      width=130),
             "feedgendate":        st.column_config.TextColumn("Feed Gen Date",      width=130),
             "evtactioncd":        st.column_config.TextColumn("Evt Action",         width=80),
             "lstactioncd":        st.column_config.TextColumn("LST Action",         width=80),
@@ -658,6 +669,7 @@ with tab3:
                     "Election_Deadline":   sel.get("optionelectiondt"),
                     "Unconditional_Date":  sel.get("unconditionaldt"),
                     "Compulsory_Acq_Date": sel.get("compulsoryacqdt"),
+                    "MA_Close_Date":       sel.get("MA_Close_Date"),
                 })
             else:
                 st.json({
