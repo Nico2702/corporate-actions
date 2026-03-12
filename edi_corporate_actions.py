@@ -2,14 +2,10 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import date, timedelta
-import json
+from collections import defaultdict
 
-# ── Page Config ──────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="EDI Corporate Actions",
-    page_icon="📊",
-    layout="wide",
-)
+# ── Page Config ───────────────────────────────────────────────────────────────
+st.set_page_config(page_title="EDI Corporate Actions", page_icon="📊", layout="wide")
 
 # ── Styling ───────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -22,71 +18,128 @@ st.markdown("""
         display: inline-block; padding: 2px 10px; border-radius: 12px;
         font-size: 0.75rem; font-weight: 600;
     }
-    .badge-cash   { background: #1a3a2a; color: #4caf50; border: 1px solid #4caf50; }
-    .badge-special{ background: #3a2a1a; color: #ff9800; border: 1px solid #ff9800; }
-    .badge-stock  { background: #1a2a3a; color: #2196f3; border: 1px solid #2196f3; }
-    .badge-split  { background: #2a1a3a; color: #9c27b0; border: 1px solid #9c27b0; }
-    .badge-rights { background: #3a1a1a; color: #f44336; border: 1px solid #f44336; }
-    .badge-other  { background: #2a2a2a; color: #aaa;    border: 1px solid #aaa; }
+    .badge-cash     { background: #1a3a2a; color: #4caf50; border: 1px solid #4caf50; }
+    .badge-special  { background: #3a2a1a; color: #ff9800; border: 1px solid #ff9800; }
+    .badge-stock    { background: #1a2a3a; color: #2196f3; border: 1px solid #2196f3; }
+    .badge-split    { background: #2a1a3a; color: #9c27b0; border: 1px solid #9c27b0; }
+    .badge-rights   { background: #3a1a1a; color: #f44336; border: 1px solid #f44336; }
+    .badge-takeover { background: #1a2a2a; color: #00bcd4; border: 1px solid #00bcd4; }
+    .badge-other    { background: #2a2a2a; color: #aaa;    border: 1px solid #aaa; }
     section[data-testid="stSidebar"] { background-color: #161b22; }
-    .stDataFrame { background-color: #161b22; }
     h1, h2, h3 { color: #ffffff; }
     .stAlert { border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
-
-# ── Classification Logic (EDI Spec) ──────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────────────
 US_MICS = {"XNAS", "XNYS"}
 
+EVENT_TYPE_COLORS = {
+    "Cash Dividend":          "badge-cash",
+    "Special Dividend":       "badge-special",
+    "Stock Dividend":         "badge-stock",
+    "Cash or Stock Dividend": "badge-stock",
+    "Cash + Stock Dividend":  "badge-stock",
+    "Stock Split":            "badge-split",
+    "Rights Issue":           "badge-rights",
+    "Takeover":               "badge-takeover",
+    "Other":                  "badge-other",
+}
+
+RAW_COLUMNS = [
+    "eventid", "optionid", "eventcd", "marker", "paytypecd", "mandvoluflag",
+    "exdt", "paydt", "recorddt", "declarationdt",
+    "grossdividend", "netdividend", "divrate", "cashback",
+    "ratioold", "rationew", "ratecurencd",
+    "issueprice", "entissueprice", "depfees",
+    "outsectycd", "operationalmic", "isin", "issuername",
+    "offerorname", "outisin", "outbbgcompticker",
+    "minimumprice", "maximumprice", "hostile",
+    "unconditionaldt", "compulsoryacqdt",
+    "frequency", "periodenddt", "ntschangedt",
+    "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
+    "voting", "defaultoptionflag", "optionelectiondt",
+]
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def safe_div(a, b):
+    try:
+        return float(a) / float(b)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+
+def parse_feedgendate(val):
+    if not val:
+        return pd.Timestamp.min
+    try:
+        return pd.Timestamp(val)
+    except Exception:
+        return pd.Timestamp.min
+
+
+# ── Classification ────────────────────────────────────────────────────────────
 def classify_event(row: dict) -> dict:
-    """
-    Apply EDI specification classification rules.
-    Returns dict with: event_type, subtype, dividend_amount, tax_marker,
-    dividend_currency, stock_dividend_pct, stock_dividend_ratio,
-    split_ratio, subscription_price, subscription_currency, subscription_ratio
-    """
     result = {
-        "event_type": "Other",
-        "subtype": "",
-        "dividend_amount": "",
-        "tax_marker": "",
-        "dividend_currency": "",
-        "stock_dividend_pct": "",
-        "stock_dividend_ratio": "",
+        "event_type": "Other", "subtype": "",
+        "dividend_amount": "", "tax_marker": "", "dividend_currency": "",
+        "stock_dividend_pct": "", "stock_dividend_ratio": "",
         "split_ratio": "",
-        "subscription_price": "",
-        "subscription_currency": "",
-        "subscription_ratio": "",
+        "subscription_price": "", "subscription_currency": "", "subscription_ratio": "",
+        "ma_subtype": "", "ma_offeror": "", "ma_hostile": "",
+        "ma_cash_price": "", "ma_cash_currency": "",
+        "ma_stock_ratio": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
+        "ma_mixed_cash": "", "ma_mixed_stock_ratio": "",
+        "ma_mandatory_voluntary": "",
         "ignore": False,
     }
 
-    eventcd     = (row.get("eventcd")     or "").upper().strip()
-    marker      = (row.get("marker")      or "").upper().strip()
-    paytypecd   = (row.get("paytypecd")   or "").upper().strip()
-    outsectycd  = (row.get("outsectycd")  or "").upper().strip()
-    op_mic      = (row.get("operationalmic") or "").upper().strip()
+    eventcd    = (row.get("eventcd")        or "").upper().strip()
+    marker     = (row.get("marker")         or "").upper().strip()
+    paytypecd  = (row.get("paytypecd")      or "").upper().strip()
+    outsectycd = (row.get("outsectycd")     or "").upper().strip()
+    op_mic     = (row.get("operationalmic") or "").upper().strip()
+    gross         = row.get("grossdividend")  or ""
+    net           = row.get("netdividend")    or ""
+    cashback      = row.get("cashback")       or ""
+    ratecurencd   = row.get("ratecurencd")    or ""
+    rationew      = row.get("rationew")       or ""
+    ratioold      = row.get("ratioold")       or ""
+    issueprice    = row.get("issueprice")     or ""
+    entissueprice = row.get("entissueprice")  or ""
+    is_us = op_mic in US_MICS
+    is_au = op_mic == "XASX"
+    is_br = op_mic == "BVMF"
 
-    gross       = row.get("grossdividend") or ""
-    net         = row.get("netdividend")   or ""
-    cashback    = row.get("cashback")      or ""
-    ratecurencd = row.get("ratecurencd")   or ""
-    rationew    = row.get("rationew")      or ""
-    ratioold    = row.get("ratioold")      or ""
-    issueprice  = row.get("issueprice")    or ""
-    entissueprice = row.get("entissueprice") or ""
-    depfees     = row.get("depfees")       or ""
-
-    is_us       = op_mic in US_MICS
-    is_au       = op_mic == "XASX"
-    is_br       = op_mic == "BVMF"
-
-    # ── Helper: safe ratio calc ──
-    def safe_div(a, b):
-        try:
-            return float(a) / float(b)
-        except (TypeError, ValueError, ZeroDivisionError):
-            return None
+    # ── TKOVR ─────────────────────────────────────────────────────────────────
+    if eventcd == "TKOVR":
+        result["event_type"]              = "Takeover"
+        result["ma_offeror"]             = row.get("offerorname") or ""
+        result["ma_hostile"]             = row.get("hostile")     or ""
+        result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
+        if paytypecd == "C":
+            result["ma_subtype"]       = "Cash"
+            result["ma_cash_price"]    = row.get("minimumprice") or row.get("maximumprice") or ""
+            result["ma_cash_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
+        elif paytypecd == "S":
+            result["ma_subtype"]        = "Stock"
+            result["ma_offeror_isin"]   = row.get("outisin")          or ""
+            result["ma_offeror_ticker"] = row.get("outbbgcompticker")  or ""
+            ratio = safe_div(rationew, ratioold)
+            result["ma_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
+        elif paytypecd == "B":
+            result["ma_subtype"]           = "Mixed (Cash + Stock)"
+            result["ma_mixed_cash"]        = row.get("minimumprice") or row.get("maximumprice") or ""
+            result["ma_cash_currency"]     = row.get("ratecurencd") or row.get("tradingcurencd") or ""
+            result["ma_offeror_isin"]      = row.get("outisin")          or ""
+            result["ma_offeror_ticker"]    = row.get("outbbgcompticker")  or ""
+            ratio = safe_div(rationew, ratioold)
+            result["ma_mixed_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
+        elif paytypecd == "D":
+            result["ma_subtype"] = "Debenture"
+        else:
+            result["ma_subtype"] = paytypecd
+        return result
 
     # ── Rights Issue ──────────────────────────────────────────────────────────
     if eventcd in {"RTS", "ENT"}:
@@ -113,7 +166,7 @@ def classify_event(row: dict) -> dict:
         result["split_ratio"] = f"{ratio:.6f}" if ratio else ""
         return result
 
-    # ── US: DIV/BON + paytypecd=S → Stock Split ──────────────────────────────
+    # ── US: DIV/BON + S → Stock Split ────────────────────────────────────────
     if is_us and eventcd in {"DIV", "BON"} and paytypecd == "S":
         if outsectycd == "WAR":
             result["ignore"] = True
@@ -121,14 +174,13 @@ def classify_event(row: dict) -> dict:
         result["event_type"] = "Stock Split"
         result["subtype"]    = "Forward Stock Split"
         try:
-            rn = float(rationew)
-            ro = float(ratioold)
+            rn = float(rationew); ro = float(ratioold)
             result["split_ratio"] = f"{(rn + ro) / ro:.6f}"
         except (TypeError, ValueError):
             pass
         return result
 
-    # ── non-US: DIV/BON + paytypecd=S → Stock Dividend ───────────────────────
+    # ── non-US: DIV/BON + S → Stock Dividend ─────────────────────────────────
     if not is_us and eventcd in {"DIV", "BON"} and paytypecd == "S":
         if outsectycd == "WAR":
             result["ignore"] = True
@@ -141,26 +193,22 @@ def classify_event(row: dict) -> dict:
             result["stock_dividend_ratio"] = f"{1 + ratio:.6f}"
         return result
 
-    # ── DIV + paytypecd=B → Both Cash & Stock Dividend ────────────────────────
+    # ── DIV + B → Cash & Stock Dividend ──────────────────────────────────────
     if eventcd == "DIV" and paytypecd == "B":
         result["event_type"] = "Cash + Stock Dividend"
         result["subtype"]    = "Both"
-        # Cash side
         if gross:
-            result["dividend_amount"]   = gross
-            result["tax_marker"]        = "GROSS"
+            result["dividend_amount"] = gross; result["tax_marker"] = "GROSS"
         elif net:
-            result["dividend_amount"]   = net
-            result["tax_marker"]        = "GROSS"
+            result["dividend_amount"] = net;   result["tax_marker"] = "GROSS"
         result["dividend_currency"] = ratecurencd
-        # Stock side
         ratio = safe_div(rationew, ratioold)
         if ratio is not None:
             result["stock_dividend_pct"]   = f"{ratio * 100:.4f}%"
             result["stock_dividend_ratio"] = f"{1 + ratio:.6f}"
         return result
 
-    # ── Return of Capital (Special Dividend) ──────────────────────────────────
+    # ── RCAP ──────────────────────────────────────────────────────────────────
     if eventcd == "RCAP":
         result["event_type"]        = "Special Dividend"
         result["subtype"]           = "Return of Capital"
@@ -169,118 +217,242 @@ def classify_event(row: dict) -> dict:
         result["dividend_currency"] = ratecurencd
         return result
 
-    # ── Liquidation / Memorial (Special Dividend) ─────────────────────────────
+    # ── LIQ / MEM ─────────────────────────────────────────────────────────────
     if eventcd in {"LIQ", "MEM"}:
-        result["event_type"]  = "Special Dividend"
-        result["subtype"]     = "Liquidation" if eventcd == "LIQ" else "Memorial"
+        result["event_type"] = "Special Dividend"
+        result["subtype"]    = "Liquidation" if eventcd == "LIQ" else "Memorial"
         if gross:
-            result["dividend_amount"] = gross
-            result["tax_marker"]      = "GROSS"
+            result["dividend_amount"] = gross; result["tax_marker"] = "GROSS"
         elif net:
-            result["dividend_amount"] = net
-            result["tax_marker"]      = "GROSS"
+            result["dividend_amount"] = net;   result["tax_marker"] = "GROSS"
         result["dividend_currency"] = ratecurencd
         return result
 
-    # ── DIV, DIVIF, DRIP, FRANK, PID ─────────────────────────────────────────
+    # ── DIV / DIVIF / DRIP / FRANK / PID ─────────────────────────────────────
     if eventcd in {"DIV", "DIVIF", "DRIP", "FRANK", "PID"}:
-        # Subtype detection
         if marker == "SPL":
             result["event_type"] = "Special Dividend"
         elif marker == "ISC":
-            result["event_type"] = "Cash Dividend"
-            result["subtype"]    = "Interest on Capital"
-        elif marker in {"CGS"}:
-            result["event_type"] = "Special Dividend"
-            result["subtype"]    = "Short-Term Capital Gains"
-        elif marker in {"CGL"}:
-            result["event_type"] = "Special Dividend"
-            result["subtype"]    = "Long-Term Capital Gains"
+            result["event_type"] = "Cash Dividend"; result["subtype"] = "Interest on Capital"
+        elif marker == "CGS":
+            result["event_type"] = "Special Dividend"; result["subtype"] = "Short-Term Capital Gains"
+        elif marker == "CGL":
+            result["event_type"] = "Special Dividend"; result["subtype"] = "Long-Term Capital Gains"
         elif eventcd == "PID":
-            result["event_type"] = "Cash Dividend"
-            result["subtype"]    = "Property Income Distribution (PID)"
+            result["event_type"] = "Cash Dividend"; result["subtype"] = "Property Income Distribution (PID)"
         else:
             result["event_type"] = "Cash Dividend"
 
-        # Amount logic
         if is_au:
             result["dividend_amount"] = net if net else gross
             result["tax_marker"]      = "GROSS"
         else:
             if gross:
-                result["dividend_amount"] = gross
-                result["tax_marker"]      = "GROSS"
+                result["dividend_amount"] = gross; result["tax_marker"] = "GROSS"
             elif net:
-                result["dividend_amount"] = net
-                result["tax_marker"]      = "GROSS"
+                result["dividend_amount"] = net;   result["tax_marker"] = "GROSS"
 
         result["dividend_currency"] = ratecurencd
-
-        # Brazil ISC override
         if is_br and marker == "ISC":
-            result["subtype"]    = "Interest on Capital"
-            result["tax_marker"] = "GROSS (15% WHT)"
-
+            result["subtype"] = "Interest on Capital"; result["tax_marker"] = "GROSS (15% WHT)"
         return result
 
     return result
 
 
-# ── Raw field display config ──────────────────────────────────────────────────
-RAW_COLUMNS = [
-    "eventid", "optionid", "eventcd", "marker", "paytypecd", "mandvoluflag",
-    "exdt", "paydt", "recorddt", "declarationdt",
-    "grossdividend", "netdividend", "divrate", "cashback",
-    "ratioold", "rationew", "ratecurencd",
-    "issueprice", "entissueprice", "depfees",
-    "outsectycd", "operationalmic", "isin", "issuername",
-    "frequency", "periodenddt", "ntschangedt",
-    "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
-    "voting", "defaultoptionflag", "optionelectiondt",
-]
+# ── Step 1: Deduplicate ───────────────────────────────────────────────────────
+def deduplicate(records):
+    raw_df = pd.DataFrame(records)
+    raw_df["_ts"] = raw_df["feedgendate"].apply(parse_feedgendate)
+    raw_df = (
+        raw_df
+        .sort_values("_ts", ascending=False)
+        .drop_duplicates(subset=["eventid", "optionid", "operationalmic"], keep="first")
+        .drop(columns=["_ts"])
+    )
+    return raw_df.to_dict(orient="records")
 
-EVENT_TYPE_COLORS = {
-    "Cash Dividend":          "badge-cash",
-    "Special Dividend":       "badge-special",
-    "Stock Dividend":         "badge-stock",
-    "Cash or Stock Dividend": "badge-stock",
-    "Cash + Stock Dividend":  "badge-stock",
-    "Stock Split":            "badge-split",
-    "Rights Issue":           "badge-rights",
-    "Other":                  "badge-other",
-}
+
+# ── Step 2: Merge ─────────────────────────────────────────────────────────────
+def merge_events(records_list):
+    groups = defaultdict(list)
+    for r in records_list:
+        key = (r.get("eventid", ""), r.get("operationalmic", ""))
+        groups[key].append(r)
+
+    merged = []
+    for (eid, mic), group in groups.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+
+        eventcd    = (group[0].get("eventcd") or "").upper().strip()
+        option_ids = [r.get("optionid", "") for r in group]
+
+        # ── TKOVR: multiple optionids → merge all options ─────────────────────
+        if eventcd == "TKOVR" and len(set(option_ids)) > 1:
+            base = dict(sorted(group, key=lambda r: str(r.get("optionid", "")))[0])
+            base["_is_tkovr_election"] = True
+            paytypes = sorted(set(r.get("paytypecd", "") for r in group))
+            base["_tkovr_paytypes"] = paytypes
+
+            cash_opt  = next((r for r in group if r.get("paytypecd") == "C"), None)
+            stock_opt = next((r for r in group if r.get("paytypecd") == "S"), None)
+            mixed_opt = next((r for r in group if r.get("paytypecd") == "B"), None)
+
+            if cash_opt:
+                base["_ma_cash_price"]    = cash_opt.get("minimumprice") or cash_opt.get("maximumprice") or ""
+                base["_ma_cash_currency"] = cash_opt.get("ratecurencd") or cash_opt.get("tradingcurencd") or ""
+            if stock_opt:
+                base["_ma_offeror_isin"]   = stock_opt.get("outisin")          or ""
+                base["_ma_offeror_ticker"] = stock_opt.get("outbbgcompticker")  or ""
+                ratio = safe_div(stock_opt.get("rationew"), stock_opt.get("ratioold"))
+                base["_ma_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
+            if mixed_opt:
+                base["_ma_mixed_cash"]        = mixed_opt.get("minimumprice") or mixed_opt.get("maximumprice") or ""
+                base["_ma_mixed_currency"]    = mixed_opt.get("ratecurencd") or mixed_opt.get("tradingcurencd") or ""
+                base["_ma_offeror_isin"]      = base.get("_ma_offeror_isin")   or mixed_opt.get("outisin")          or ""
+                base["_ma_offeror_ticker"]    = base.get("_ma_offeror_ticker") or mixed_opt.get("outbbgcompticker")  or ""
+                ratio = safe_div(mixed_opt.get("rationew"), mixed_opt.get("ratioold"))
+                base["_ma_mixed_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
+
+            merged.append(base)
+            continue
+
+        # ── Dividend Election: voting=V, multiple optionids ───────────────────
+        votings = [r.get("voting", "") for r in group]
+        if any(v == "V" for v in votings) and len(set(option_ids)) > 1:
+            cash_row  = next((r for r in group if str(r.get("optionid", "")) == "1"), None)
+            stock_row = next((r for r in group if str(r.get("optionid", "")) == "2"), None)
+            if not cash_row or not stock_row:
+                merged.extend(group)
+                continue
+            combined = dict(cash_row)
+            combined["_is_election"]        = True
+            combined["_opt1_grossdividend"] = cash_row.get("grossdividend", "")
+            combined["_opt1_netdividend"]   = cash_row.get("netdividend", "")
+            combined["_opt2_rationew"]      = stock_row.get("rationew", "")
+            combined["_opt2_ratioold"]      = stock_row.get("ratioold", "")
+            combined["optionelectiondt"]    = (stock_row.get("optionelectiondt") or
+                                               cash_row.get("optionelectiondt") or "")
+            combined["rationew"]            = stock_row.get("rationew", "")
+            combined["ratioold"]            = stock_row.get("ratioold", "")
+            combined["paytypecd"]           = "B"
+            merged.append(combined)
+            continue
+
+        merged.extend(group)
+
+    return merged
+
+
+# ── Step 3: Build rows ────────────────────────────────────────────────────────
+MA_FIELDS = ["MA_Offeror","MA_Hostile","MA_Mand_Vol","MA_Cash_Price",
+              "MA_Cash_Currency","MA_Stock_Ratio","MA_Mixed_Cash",
+              "MA_Mixed_Currency","MA_Mixed_Ratio","MA_Offeror_ISIN","MA_Offeror_Ticker"]
+DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Dividend_Currency",
+              "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio",
+              "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option"]
+
+def build_rows(processed_records, show_ignored):
+    rows = []
+    for r in processed_records:
+        is_election       = r.get("_is_election", False)
+        is_tkovr_election = r.get("_is_tkovr_election", False)
+        cl                = classify_event(r)
+
+        if cl["ignore"] and not show_ignored:
+            continue
+
+        row = {col: r.get(col, "") for col in RAW_COLUMNS}
+        # initialise derived fields
+        for f in DIV_FIELDS + MA_FIELDS:
+            row[f] = ""
+
+        if is_tkovr_election:
+            paytypes = r.get("_tkovr_paytypes", [])
+            label_map = {"C": "Cash", "S": "Stock", "B": "Mixed", "D": "Debenture"}
+            subtype_label = " + ".join(label_map.get(p, p) for p in paytypes)
+            row["Event_Type"]         = "Takeover"
+            row["Subtype"]            = f"Election ({subtype_label})"
+            row["MA_Offeror"]        = r.get("offerorname", "")
+            row["MA_Hostile"]        = r.get("hostile", "")
+            row["MA_Mand_Vol"]       = r.get("mandvoluflag", "")
+            row["MA_Cash_Price"]     = r.get("_ma_cash_price", "")
+            row["MA_Cash_Currency"]  = r.get("_ma_cash_currency", "")
+            row["MA_Stock_Ratio"]    = r.get("_ma_stock_ratio", "")
+            row["MA_Mixed_Cash"]     = r.get("_ma_mixed_cash", "")
+            row["MA_Mixed_Currency"] = r.get("_ma_mixed_currency", "")
+            row["MA_Mixed_Ratio"]    = r.get("_ma_mixed_stock_ratio", "")
+            row["MA_Offeror_ISIN"]   = r.get("_ma_offeror_isin", "")
+            row["MA_Offeror_Ticker"] = r.get("_ma_offeror_ticker", "")
+
+        elif cl["event_type"] == "Takeover":
+            row["Event_Type"]         = "Takeover"
+            row["Subtype"]            = cl["ma_subtype"]
+            row["MA_Offeror"]        = cl["ma_offeror"]
+            row["MA_Hostile"]        = cl["ma_hostile"]
+            row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
+            row["MA_Cash_Price"]     = cl["ma_cash_price"]
+            row["MA_Cash_Currency"]  = cl["ma_cash_currency"]
+            row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
+            row["MA_Mixed_Cash"]     = cl["ma_mixed_cash"]
+            row["MA_Mixed_Ratio"]    = cl["ma_mixed_stock_ratio"]
+            row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
+            row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
+
+        elif is_election:
+            row["Event_Type"]        = "Cash or Stock Dividend"
+            row["Subtype"]           = "Shareholder Election"
+            row["Dividend_Amount"]   = r.get("_opt1_grossdividend") or r.get("_opt1_netdividend") or ""
+            row["Tax_Marker"]        = "GROSS"
+            row["Dividend_Currency"] = r.get("ratecurencd", "")
+            ratio = safe_div(r.get("_opt2_rationew"), r.get("_opt2_ratioold"))
+            row["Stock_Div_Pct"]     = f"{ratio*100:.4f}%" if ratio else ""
+            row["Stock_Div_Ratio"]   = f"{1+ratio:.6f}"    if ratio else ""
+            row["Default_Option"]    = "Cash"
+
+        else:
+            row["Event_Type"]        = cl["event_type"]
+            row["Subtype"]           = cl["subtype"]
+            row["Dividend_Amount"]   = cl["dividend_amount"]
+            row["Tax_Marker"]        = cl["tax_marker"]
+            row["Dividend_Currency"] = cl["dividend_currency"]
+            row["Stock_Div_Pct"]     = cl["stock_dividend_pct"]
+            row["Stock_Div_Ratio"]   = cl["stock_dividend_ratio"]
+            row["Split_Ratio"]       = cl["split_ratio"]
+            row["Sub_Price"]         = cl["subscription_price"]
+            row["Sub_Currency"]      = cl["subscription_currency"]
+            row["Sub_Ratio"]         = cl["subscription_ratio"]
+
+        row["_ignored"] = cl["ignore"]
+        rows.append(row)
+    return rows
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.image("https://via.placeholder.com/180x40/0f1117/4a90d9?text=NaroIX", width=160)
     st.markdown("## ⚙️ EDI API Settings")
-
     api_key = st.text_input("API Key", type="password", placeholder="Bearer token...")
     st.divider()
-
     st.markdown("### 🔍 Query Parameters")
-    isin = st.text_input("ISIN", placeholder="e.g. CH1256740924")
+    isin   = st.text_input("ISIN", placeholder="e.g. CH1256740924")
     op_mic = st.text_input("Operational MIC", placeholder="e.g. XSWX")
-    
     col1, col2 = st.columns(2)
     with col1:
         from_date = st.date_input("From Ex-Date", value=date.today() - timedelta(days=365))
     with col2:
-        to_date = st.date_input("To Ex-Date", value=date.today() + timedelta(days=180))
-
+        to_date   = st.date_input("To Ex-Date",   value=date.today() + timedelta(days=180))
     st.divider()
     st.markdown("### 🎛️ Display Filters")
     show_ignored = st.checkbox("Show ignored events (WAR)", value=False)
-    
     event_type_filter = st.multiselect(
         "Filter by Event Type",
         options=["Cash Dividend", "Special Dividend", "Stock Dividend",
                  "Cash or Stock Dividend", "Cash + Stock Dividend",
-                 "Stock Split", "Rights Issue", "Other"],
+                 "Stock Split", "Rights Issue", "Takeover", "Other"],
         default=[]
     )
-
     fetch_btn = st.button("🔄 Fetch Corporate Actions", use_container_width=True, type="primary")
 
 
@@ -290,23 +462,34 @@ st.caption("Live data from Exchange Data International (EDI) API")
 
 if not fetch_btn:
     st.info("👈 Configure query parameters in the sidebar and click **Fetch Corporate Actions**.")
-    
     with st.expander("📖 Classification Logic Reference", expanded=False):
         st.markdown("""
+        **Dividends**
         | Event Type | Subtype | EDI Condition |
         |---|---|---|
-        | Cash Dividend | — | `eventcd` ∈ {DIV, DIVIF, DRIP, FRANK, PID}, `marker` ≠ SPL |
+        | Cash Dividend | — | `eventcd` ∈ {DIV,DIVIF,DRIP,FRANK,PID}, `marker` ≠ SPL |
         | Cash Dividend | Interest on Capital | `marker` = ISC |
-        | Cash Dividend | PID | `eventcd` = PID |
         | Special Dividend | — | `marker` = SPL |
         | Special Dividend | Return of Capital | `eventcd` = RCAP |
-        | Special Dividend | Liquidation | `eventcd` = LIQ |
-        | Special Dividend | Short-Term Cap Gains | `marker` = CGS |
-        | Special Dividend | Long-Term Cap Gains | `marker` = CGL |
+        | Special Dividend | Liquidation/Memorial | `eventcd` ∈ {LIQ,MEM} |
         | Stock Dividend | — | non-US, `eventcd` ∈ {DIV,BON}, `paytypecd` = S |
-        | Stock Split | Forward | US only, `eventcd` ∈ {DIV,BON}, `paytypecd` = S or `eventcd` ∈ {SD, FSPLT} |
-        | Stock Split | Reverse | `eventcd` ∈ {CONSD, RSPLT} |
-        | Rights Issue | — | `eventcd` ∈ {RTS, ENT} |
+        | Cash or Stock Dividend | Shareholder Election | `voting`=V, multiple optionids |
+
+        **Corporate Events**
+        | Event Type | Subtype | EDI Condition |
+        |---|---|---|
+        | Stock Split | Forward | US: `eventcd` ∈ {DIV,BON,SD,FSPLT}, `paytypecd`=S |
+        | Stock Split | Reverse | `eventcd` ∈ {CONSD,RSPLT} |
+        | Rights Issue | — | `eventcd` ∈ {RTS,ENT} |
+
+        **Takeovers**
+        | Event Type | Subtype | Condition |
+        |---|---|---|
+        | Takeover | Cash | `eventcd`=TKOVR, `paytypecd`=C → `minimumprice` |
+        | Takeover | Stock | `eventcd`=TKOVR, `paytypecd`=S → `rationew/ratioold`, `outisin` |
+        | Takeover | Mixed (Cash + Stock) | `eventcd`=TKOVR, `paytypecd`=B |
+        | Takeover | Debenture | `eventcd`=TKOVR, `paytypecd`=D |
+        | Takeover | Election (multiple) | `eventcd`=TKOVR, multiple optionids merged |
         """)
     st.stop()
 
@@ -314,7 +497,6 @@ if not fetch_btn:
 if not api_key:
     st.error("⚠️ Please enter your EDI API Key in the sidebar.")
     st.stop()
-
 if not isin:
     st.error("⚠️ Please enter an ISIN.")
     st.stop()
@@ -327,186 +509,43 @@ url = (
     f"&toexdate={to_date.strftime('%Y-%m-%d')}"
 )
 
-headers = {"authorization": api_key}
-
 with st.spinner("Fetching data from EDI API..."):
     try:
-        response = requests.get(url, headers=headers, timeout=30)
-        
-        # Show response meta
-        rec_count   = response.headers.get("X-Record-Count", "–")
-        total_recs  = response.headers.get("X-Total-Records", "–")
-        rate_remain = response.headers.get("X-Ratelimit-Remaining", "–")
-        rate_limit  = response.headers.get("X-Ratelimit-Limit", "–")
-
+        response    = requests.get(url, headers={"authorization": api_key}, timeout=30)
+        rec_count   = response.headers.get("X-Record-Count",      "–")
+        total_recs  = response.headers.get("X-Total-Records",     "–")
+        rate_remain = response.headers.get("X-Ratelimit-Remaining","–")
+        rate_limit  = response.headers.get("X-Ratelimit-Limit",   "–")
         if response.status_code != 200:
             st.error(f"API Error {response.status_code}: {response.text[:500]}")
             st.stop()
-
-        data = response.json()
-        records = data.get("jsondata", [])
-
+        records = response.json().get("jsondata", [])
     except requests.exceptions.ConnectionError:
-        st.error("❌ Could not connect to EDI API. Check your network or API URL.")
+        st.error("❌ Could not connect to EDI API.")
         st.stop()
     except Exception as e:
         st.error(f"❌ Unexpected error: {e}")
         st.stop()
 
-# ── Meta Row ──────────────────────────────────────────────────────────────────
+# ── Meta ──────────────────────────────────────────────────────────────────────
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("ISIN", isin)
 m2.metric("Records Returned", rec_count)
 m3.metric("Total Records", total_recs)
 m4.metric("Rate Limit", rate_limit)
 m5.metric("Rate Remaining", rate_remain)
-
 st.divider()
 
 if not records:
     st.warning("No corporate action records found for the given parameters.")
     st.stop()
 
-# ── Step 1: Deduplicate — per eventid+optionid keep latest feedgendate ────────
-def parse_feedgendate(val):
-    if not val:
-        return pd.Timestamp.min
-    try:
-        return pd.Timestamp(val)
-    except Exception:
-        return pd.Timestamp.min
+# ── Process ───────────────────────────────────────────────────────────────────
+deduped   = deduplicate(records)
+processed = merge_events(deduped)
+rows      = build_rows(processed, show_ignored)
+df        = pd.DataFrame(rows)
 
-# Build raw dataframe for dedup
-raw_df = pd.DataFrame(records)
-if "feedgendate" in raw_df.columns:
-    raw_df["_feedgendate_ts"] = raw_df["feedgendate"].apply(parse_feedgendate)
-    raw_df = (
-        raw_df
-        .sort_values("_feedgendate_ts", ascending=False)
-        .drop_duplicates(subset=["eventid", "optionid", "operationalmic"], keep="first")
-        .drop(columns=["_feedgendate_ts"])
-    )
-deduped_records = raw_df.to_dict(orient="records")
-
-# ── Step 2: Merge Election Events (voting=V, multiple optionids) ──────────────
-def merge_election_events(records_list):
-    """
-    Group by eventid. If voting=V and multiple optionids exist,
-    merge into a single row combining Cash (optionid=1) and Stock (optionid=2) data.
-    """
-    from collections import defaultdict
-    groups = defaultdict(list)
-    for r in records_list:
-        key = (r.get("eventid", ""), r.get("operationalmic", ""))
-        groups[key].append(r)
-
-    merged = []
-    for (eid, mic), group in groups.items():
-        if len(group) == 1:
-            merged.append(group[0])
-            continue
-
-        # Check if this is an election event
-        votings = [r.get("voting", "") for r in group]
-        is_election = any(v == "V" for v in votings)
-        option_ids  = [r.get("optionid", "") for r in group]
-
-        if not is_election or len(set(option_ids)) < 2:
-            # Not an election — keep all records separately
-            merged.extend(group)
-            continue
-
-        # Find cash option (optionid=1, paytypecd=C) and stock option (optionid=2, paytypecd=S)
-        cash_row  = next((r for r in group if str(r.get("optionid","")) == "1"), None)
-        stock_row = next((r for r in group if str(r.get("optionid","")) == "2"), None)
-
-        if not cash_row or not stock_row:
-            merged.extend(group)
-            continue
-
-        # Use cash_row as base (has grossdividend, netdividend, ratecurencd)
-        combined = dict(cash_row)
-        combined["_is_election"]         = True
-        combined["_opt1_paytypecd"]      = cash_row.get("paytypecd", "")
-        combined["_opt2_paytypecd"]      = stock_row.get("paytypecd", "")
-        combined["_opt1_grossdividend"]  = cash_row.get("grossdividend", "")
-        combined["_opt1_netdividend"]    = cash_row.get("netdividend", "")
-        combined["_opt1_defaultflag"]    = cash_row.get("defaultoptionflag", "")
-        combined["_opt2_rationew"]       = stock_row.get("rationew", "")
-        combined["_opt2_ratioold"]       = stock_row.get("ratioold", "")
-        combined["_opt2_defaultflag"]    = stock_row.get("defaultoptionflag", "")
-        combined["optionelectiondt"]     = stock_row.get("optionelectiondt", "") or cash_row.get("optionelectiondt", "")
-        # Keep stock ratio fields for classification
-        combined["rationew"]             = stock_row.get("rationew", "")
-        combined["ratioold"]             = stock_row.get("ratioold", "")
-        combined["paytypecd"]            = "B"  # signal both options present
-
-        merged.append(combined)
-
-    return merged
-
-processed_records = merge_election_events(deduped_records)
-
-# ── Step 3: Classify + Build Final DataFrame ──────────────────────────────────
-rows = []
-for r in processed_records:
-    is_election = r.get("_is_election", False)
-    classification = classify_event(r)
-
-    if classification["ignore"] and not show_ignored:
-        continue
-
-    row = {}
-    for col in RAW_COLUMNS:
-        row[col] = r.get(col, "")
-
-    # Override Event_Type for election events
-    if is_election:
-        row["Event_Type"]      = "Cash or Stock Dividend"
-        row["Subtype"]         = "Shareholder Election"
-        # Cash side
-        row["Dividend_Amount"] = r.get("_opt1_grossdividend") or r.get("_opt1_netdividend") or ""
-        row["Tax_Marker"]      = "GROSS"
-        row["Dividend_Currency"] = r.get("ratecurencd", "")
-        # Stock side
-        try:
-            rn = float(r.get("_opt2_rationew") or 0)
-            ro = float(r.get("_opt2_ratioold") or 0)
-            if ro:
-                row["Stock_Div_Pct"]   = f"{(rn/ro)*100:.4f}%"
-                row["Stock_Div_Ratio"] = f"{1+(rn/ro):.6f}"
-            else:
-                row["Stock_Div_Pct"]   = ""
-                row["Stock_Div_Ratio"] = ""
-        except (TypeError, ValueError):
-            row["Stock_Div_Pct"]   = ""
-            row["Stock_Div_Ratio"] = ""
-        # Default option — always Cash for election events (voting=V)
-        row["Default_Option"]  = "Cash"
-        row["Split_Ratio"]     = ""
-        row["Sub_Price"]       = ""
-        row["Sub_Currency"]    = ""
-        row["Sub_Ratio"]       = ""
-    else:
-        row["Event_Type"]      = classification["event_type"]
-        row["Subtype"]         = classification["subtype"]
-        row["Dividend_Amount"] = classification["dividend_amount"]
-        row["Tax_Marker"]      = classification["tax_marker"]
-        row["Dividend_Currency"] = classification["dividend_currency"]
-        row["Stock_Div_Pct"]   = classification["stock_dividend_pct"]
-        row["Stock_Div_Ratio"] = classification["stock_dividend_ratio"]
-        row["Split_Ratio"]     = classification["split_ratio"]
-        row["Sub_Price"]       = classification["subscription_price"]
-        row["Sub_Currency"]    = classification["subscription_currency"]
-        row["Sub_Ratio"]       = classification["subscription_ratio"]
-        row["Default_Option"]  = ""
-
-    row["_ignored"] = classification["ignore"]
-    rows.append(row)
-
-df = pd.DataFrame(rows)
-
-# Apply event type filter
 if event_type_filter:
     df = df[df["Event_Type"].isin(event_type_filter)]
 
@@ -514,11 +553,12 @@ if df.empty:
     st.warning("No events match the current filters.")
     st.stop()
 
-# ── Summary Metrics ───────────────────────────────────────────────────────────
-st.subheader(f"📋 {len(df)} Events — {df['issuername'].iloc[0] if 'issuername' in df.columns and len(df) > 0 else isin}")
+# ── Summary ───────────────────────────────────────────────────────────────────
+issuer = df["issuername"].iloc[0] if "issuername" in df.columns else isin
+st.subheader(f"📋 {len(df)} Events — {issuer}")
 
 type_counts = df["Event_Type"].value_counts()
-cols = st.columns(min(len(type_counts), 6))
+cols = st.columns(min(len(type_counts), 7))
 for i, (etype, cnt) in enumerate(type_counts.items()):
     badge_cls = EVENT_TYPE_COLORS.get(etype, "badge-other")
     cols[i % len(cols)].markdown(
@@ -527,44 +567,60 @@ for i, (etype, cnt) in enumerate(type_counts.items()):
         f'<br><b style="font-size:1.5rem">{cnt}</b></div>',
         unsafe_allow_html=True
     )
-
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["🏷️ Classified Events", "📄 Raw API Fields", "🔎 Event Detail"])
 
 with tab1:
-    display_cols = [
+    div_display = [
         "Event_Type", "Subtype", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
         "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
         "Default_Option", "optionelectiondt",
+    ]
+    ma_display = [
+        "MA_Offeror", "MA_Hostile", "MA_Mand_Vol",
+        "MA_Cash_Price", "MA_Cash_Currency",
+        "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+        "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
+    ]
+    meta_display = [
         "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
         "eventid", "optionid", "isin", "issuername", "operationalmic",
     ]
-    display_cols = [c for c in display_cols if c in df.columns]
-    
+    display_cols = [c for c in div_display + ma_display + meta_display if c in df.columns]
+
     st.dataframe(
-        df[display_cols].drop(columns=["_ignored"], errors="ignore"),
+        df[display_cols],
         use_container_width=True,
         height=500,
         column_config={
-            "Event_Type":       st.column_config.TextColumn("Event Type", width=150),
-            "Subtype":          st.column_config.TextColumn("Subtype", width=180),
-            "exdt":             st.column_config.DateColumn("Ex-Date"),
-            "paydt":            st.column_config.DateColumn("Pay Date"),
-            "recorddt":         st.column_config.DateColumn("Record Date"),
-            "Dividend_Amount":  st.column_config.NumberColumn("Div Amount", format="%.4f"),
-            "Sub_Price":           st.column_config.NumberColumn("Sub Price", format="%.4f"),
-            "Default_Option":      st.column_config.TextColumn("Default Option", width=110),
-            "optionelectiondt":    st.column_config.TextColumn("Election Deadline", width=130),
-            "feedgendate":         st.column_config.TextColumn("Feed Gen Date", width=130),
-            "evtactioncd":         st.column_config.TextColumn("Evt Action", width=90),
-            "lstactioncd":         st.column_config.TextColumn("LST Action", width=90),
-            "ntsactioncd":         st.column_config.TextColumn("NTS Action", width=90),
-            "optionid":            st.column_config.TextColumn("Option ID", width=80),
+            "Event_Type":         st.column_config.TextColumn("Event Type",       width=160),
+            "Subtype":            st.column_config.TextColumn("Subtype",           width=210),
+            "exdt":               st.column_config.DateColumn("Ex-Date"),
+            "paydt":              st.column_config.DateColumn("Pay Date"),
+            "recorddt":           st.column_config.DateColumn("Record Date"),
+            "Dividend_Amount":    st.column_config.NumberColumn("Div Amount",     format="%.4f"),
+            "Sub_Price":          st.column_config.NumberColumn("Sub Price",       format="%.4f"),
+            "MA_Cash_Price":     st.column_config.NumberColumn("Cash Price",      format="%.4f"),
+            "MA_Mixed_Cash":     st.column_config.NumberColumn("Mixed Cash",      format="%.4f"),
+            "Default_Option":     st.column_config.TextColumn("Default Option",    width=110),
+            "optionelectiondt":   st.column_config.TextColumn("Election DL",       width=120),
+            "MA_Offeror":        st.column_config.TextColumn("Offeror",           width=190),
+            "MA_Hostile":        st.column_config.TextColumn("Hostile",           width=70),
+            "MA_Mand_Vol":       st.column_config.TextColumn("M/V",              width=50),
+            "MA_Stock_Ratio":    st.column_config.TextColumn("Stock Ratio",       width=100),
+            "MA_Mixed_Ratio":    st.column_config.TextColumn("Mixed Ratio",       width=100),
+            "MA_Offeror_ISIN":   st.column_config.TextColumn("Offeror ISIN",      width=130),
+            "MA_Offeror_Ticker": st.column_config.TextColumn("Offeror Ticker",    width=110),
+            "feedgendate":        st.column_config.TextColumn("Feed Gen Date",      width=130),
+            "evtactioncd":        st.column_config.TextColumn("Evt Action",         width=80),
+            "lstactioncd":        st.column_config.TextColumn("LST Action",         width=80),
+            "ntsactioncd":        st.column_config.TextColumn("NTS Action",         width=80),
+            "optionid":           st.column_config.TextColumn("Option ID",          width=75),
         }
     )
 
@@ -575,39 +631,60 @@ with tab2:
 with tab3:
     if len(df) > 0:
         event_options = [
-            f"{row['eventid']} | {row['Event_Type']} | Ex: {row['exdt']}"
+            f"{row['eventid']} | {row['Event_Type']} | {row.get('issuername','')} | Ex: {row['exdt']}"
             for _, row in df.iterrows()
         ]
         selected = st.selectbox("Select Event", event_options)
         idx = event_options.index(selected)
-        sel_row = df.iloc[idx]
-        
+        sel = df.iloc[idx]
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**🏷️ Classification**")
+            is_tko = str(sel.get("Event_Type", "")) == "Takeover"
+            if is_tko:
+                st.json({
+                    "Event_Type":          sel.get("Event_Type"),
+                    "Subtype":             sel.get("Subtype"),
+                    "Offeror":             sel.get("MA_Offeror"),
+                    "Hostile":             sel.get("MA_Hostile"),
+                    "Mandatory/Voluntary": sel.get("MA_Mand_Vol"),
+                    "Cash_Price":          sel.get("MA_Cash_Price"),
+                    "Cash_Currency":       sel.get("MA_Cash_Currency"),
+                    "Stock_Ratio":         sel.get("MA_Stock_Ratio"),
+                    "Mixed_Cash":          sel.get("MA_Mixed_Cash"),
+                    "Mixed_Stock_Ratio":   sel.get("MA_Mixed_Ratio"),
+                    "Offeror_ISIN":        sel.get("MA_Offeror_ISIN"),
+                    "Offeror_Ticker":      sel.get("MA_Offeror_Ticker"),
+                    "Election_Deadline":   sel.get("optionelectiondt"),
+                    "Unconditional_Date":  sel.get("unconditionaldt"),
+                    "Compulsory_Acq_Date": sel.get("compulsoryacqdt"),
+                })
+            else:
+                st.json({
+                    "Event_Type":        sel.get("Event_Type"),
+                    "Subtype":           sel.get("Subtype"),
+                    "Dividend_Amount":   sel.get("Dividend_Amount"),
+                    "Tax_Marker":        sel.get("Tax_Marker"),
+                    "Dividend_Currency": sel.get("Dividend_Currency"),
+                    "Stock_Div_Pct":     sel.get("Stock_Div_Pct"),
+                    "Stock_Div_Ratio":   sel.get("Stock_Div_Ratio"),
+                    "Split_Ratio":       sel.get("Split_Ratio"),
+                    "Sub_Price":         sel.get("Sub_Price"),
+                    "Sub_Currency":      sel.get("Sub_Currency"),
+                    "Sub_Ratio":         sel.get("Sub_Ratio"),
+                    "Default_Option":    sel.get("Default_Option"),
+                    "Election_Deadline": sel.get("optionelectiondt"),
+                })
+            st.markdown("**⏱️ Lifecycle**")
             st.json({
-                "Event_Type":        sel_row.get("Event_Type"),
-                "Subtype":           sel_row.get("Subtype"),
-                "Dividend_Amount":   sel_row.get("Dividend_Amount"),
-                "Tax_Marker":        sel_row.get("Tax_Marker"),
-                "Dividend_Currency": sel_row.get("Dividend_Currency"),
-                "Stock_Div_Pct":     sel_row.get("Stock_Div_Pct"),
-                "Stock_Div_Ratio":   sel_row.get("Stock_Div_Ratio"),
-                "Split_Ratio":       sel_row.get("Split_Ratio"),
-                "Sub_Price":         sel_row.get("Sub_Price"),
-                "Sub_Currency":      sel_row.get("Sub_Currency"),
-                "Sub_Ratio":         sel_row.get("Sub_Ratio"),
-                "Default_Option":    sel_row.get("Default_Option"),
-                "Election_Deadline": sel_row.get("optionelectiondt"),
-                "Feed_Gen_Date":     sel_row.get("feedgendate"),
-                "Evt_Action":        sel_row.get("evtactioncd"),
-                "LST_Action":        sel_row.get("lstactioncd"),
-                "NTS_Action":        sel_row.get("ntsactioncd"),
+                "Feed_Gen_Date": sel.get("feedgendate"),
+                "Evt_Action":    sel.get("evtactioncd"),
+                "LST_Action":    sel.get("lstactioncd"),
+                "NTS_Action":    sel.get("ntsactioncd"),
             })
         with c2:
             st.markdown("**📄 Raw Fields**")
-            raw_dict = {col: sel_row.get(col, "") for col in RAW_COLUMNS if col in sel_row}
-            st.json(raw_dict)
+            st.json({col: sel.get(col, "") for col in RAW_COLUMNS if col in sel})
 
 # ── Export ────────────────────────────────────────────────────────────────────
 st.divider()
@@ -616,5 +693,5 @@ with col_dl1:
     csv = df.drop(columns=["_ignored"], errors="ignore").to_csv(index=False).encode("utf-8")
     st.download_button("⬇️ Download CSV", csv, f"edi_ca_{isin}.csv", "text/csv")
 with col_dl2:
-    json_export = df.drop(columns=["_ignored"], errors="ignore").to_json(orient="records", indent=2)
-    st.download_button("⬇️ Download JSON", json_export, f"edi_ca_{isin}.json", "application/json")
+    json_out = df.drop(columns=["_ignored"], errors="ignore").to_json(orient="records", indent=2)
+    st.download_button("⬇️ Download JSON", json_out, f"edi_ca_{isin}.json", "application/json")
