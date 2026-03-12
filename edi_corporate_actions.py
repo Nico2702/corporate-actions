@@ -619,7 +619,10 @@ if not fetch_btn:
         | Merger | Announcement | `eventcd`=ANN, `relatedeventcd`=MRGR |
         | Takeover | Announcement | `eventcd`=ANN, `relatedeventcd`=TKOVR |
         """)
-    st.stop()
+    # Only stop if there's no cached data to show
+    if "edi_records" not in st.session_state:
+        st.info("👈 Configure query parameters in the sidebar and click **Fetch Corporate Actions**.")
+        st.stop()
 
 # ── API Call ──────────────────────────────────────────────────────────────────
 if not api_key:
@@ -709,6 +712,7 @@ for i, (etype, cnt) in enumerate(type_counts.items()):
     )
 st.divider()
 
+
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["🏷️ Classified Events", "📄 Raw API Fields", "🔎 Event Detail"])
 
@@ -722,12 +726,10 @@ with tab1:
         "Default_Option", "optionelectiondt",
     ]
     ma_display = [
-        # Takeover / Merger / Spin-Off shared
         "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
         "MA_Cash_Price", "MA_Cash_Currency",
         "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
         "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
-        # Spin-Off / Distribution / Merger specific
         "MA_Effective_Date", "MA_Exp_Completion",
         "MA_Merger_Status",
         "MA_Close_Date",
@@ -738,42 +740,41 @@ with tab1:
         "eventid", "optionid", "isin", "issuername", "operationalmic",
     ]
     display_cols = [c for c in div_display + ma_display + meta_display if c in df.columns]
-
     st.dataframe(
         df[display_cols],
         use_container_width=True,
         height=500,
         column_config={
-            "Event_Type":           st.column_config.TextColumn("Event Type",         width=160),
-            "Subtype":              st.column_config.TextColumn("Subtype",             width=210),
+            "Event_Type":           st.column_config.TextColumn("Event Type",          width=160),
+            "Subtype":              st.column_config.TextColumn("Subtype",              width=210),
             "exdt":                 st.column_config.DateColumn("Ex-Date"),
             "paydt":                st.column_config.DateColumn("Pay Date"),
             "recorddt":             st.column_config.DateColumn("Record Date"),
-            "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",       format="%.4f"),
-            "Sub_Price":            st.column_config.NumberColumn("Sub Price",         format="%.4f"),
-            "MA_Cash_Price":        st.column_config.NumberColumn("Cash Price",        format="%.4f"),
-            "MA_Mixed_Cash":        st.column_config.NumberColumn("Mixed Cash",        format="%.4f"),
-            "Default_Option":       st.column_config.TextColumn("Default Option",      width=110),
-            "optionelectiondt":     st.column_config.TextColumn("Election DL",         width=120),
-            "MA_Offeror":           st.column_config.TextColumn("Offeror",             width=190),
-            "MA_Hostile":           st.column_config.TextColumn("Hostile",             width=70),
-            "MA_Mand_Vol":          st.column_config.TextColumn("M/V",                width=50),
-            "MA_Event_Subtype":     st.column_config.TextColumn("Deal Subtype",        width=120),
-            "Spun_Off_Terms":       st.column_config.NumberColumn("Spun-Off Terms",      width=115, format="%.6f"),
-            "MA_Stock_Ratio":       st.column_config.TextColumn("Stock/Dist Ratio",    width=120),
-            "MA_Mixed_Ratio":       st.column_config.TextColumn("Mixed Ratio",         width=100),
-            "MA_Offeror_ISIN":      st.column_config.TextColumn("Counterparty ISIN",   width=140),
-            "MA_Offeror_Ticker":    st.column_config.TextColumn("Counterparty Ticker", width=130),
-            "MA_Effective_Date":    st.column_config.TextColumn("Effective Date",       width=120),
-            "MA_Exp_Completion":    st.column_config.TextColumn("Exp. Completion",     width=125),
-            "MA_Merger_Status":     st.column_config.TextColumn("Merger Status",       width=100),
-            "MA_Close_Date":        st.column_config.TextColumn("Close Date",          width=110),
-            "Creation_Date":        st.column_config.TextColumn("Creation Date",        width=130),
-            "feedgendate":          st.column_config.TextColumn("Feed Gen Date",        width=130),
-            "evtactioncd":          st.column_config.TextColumn("Evt Action",           width=80),
-            "lstactioncd":          st.column_config.TextColumn("LST Action",           width=80),
-            "ntsactioncd":          st.column_config.TextColumn("NTS Action",           width=80),
-            "optionid":             st.column_config.TextColumn("Option ID",            width=75),
+            "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",        format="%.4f"),
+            "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
+            "MA_Cash_Price":        st.column_config.NumberColumn("Cash Price",         format="%.4f"),
+            "MA_Mixed_Cash":        st.column_config.NumberColumn("Mixed Cash",         format="%.4f"),
+            "Default_Option":       st.column_config.TextColumn("Default Option",       width=110),
+            "optionelectiondt":     st.column_config.TextColumn("Election DL",          width=120),
+            "MA_Offeror":           st.column_config.TextColumn("Offeror",              width=190),
+            "MA_Hostile":           st.column_config.TextColumn("Hostile",              width=70),
+            "MA_Mand_Vol":          st.column_config.TextColumn("M/V",                 width=50),
+            "MA_Event_Subtype":     st.column_config.TextColumn("Deal Subtype",         width=120),
+            "Spun_Off_Terms":       st.column_config.NumberColumn("Spun-Off Terms",     width=115, format="%.6f"),
+            "MA_Stock_Ratio":       st.column_config.TextColumn("Stock/Dist Ratio",     width=120),
+            "MA_Mixed_Ratio":       st.column_config.TextColumn("Mixed Ratio",          width=100),
+            "MA_Offeror_ISIN":      st.column_config.TextColumn("Counterparty ISIN",    width=140),
+            "MA_Offeror_Ticker":    st.column_config.TextColumn("Counterparty Ticker",  width=130),
+            "MA_Effective_Date":    st.column_config.TextColumn("Effective Date",        width=120),
+            "MA_Exp_Completion":    st.column_config.TextColumn("Exp. Completion",      width=125),
+            "MA_Merger_Status":     st.column_config.TextColumn("Merger Status",        width=100),
+            "MA_Close_Date":        st.column_config.TextColumn("Close Date",           width=110),
+            "Creation_Date":        st.column_config.TextColumn("Creation Date",         width=130),
+            "feedgendate":          st.column_config.TextColumn("Feed Gen Date",         width=130),
+            "evtactioncd":          st.column_config.TextColumn("Evt Action",            width=80),
+            "lstactioncd":          st.column_config.TextColumn("LST Action",            width=80),
+            "ntsactioncd":          st.column_config.TextColumn("NTS Action",            width=80),
+            "optionid":             st.column_config.TextColumn("Option ID",             width=75),
         }
     )
 
@@ -783,38 +784,42 @@ with tab2:
 
 with tab3:
     if len(df) > 0:
-        def event_label(row):
-            date_hint = row["exdt"] or row.get("Creation_Date", "")[:10] or row.get("feedgendate", "")[:10]
-            return f"{row['eventid']} | {row['Event_Type']} — {row.get('Subtype','')} | {row.get('issuername','')} | {date_hint}"
+        def _event_label(row):
+            date_hint = (row["exdt"] or
+                         str(row.get("Creation_Date", ""))[:10] or
+                         str(row.get("feedgendate", ""))[:10])
+            return (f"{row['eventid']} | {row['Event_Type']} — "
+                    f"{row.get('Subtype','')} | {row.get('issuername','')} | {date_hint}")
 
-        event_options = [event_label(row) for _, row in df.iterrows()]
-        selected = st.selectbox("Select Event", event_options)
+        event_options = [_event_label(row) for _, row in df.iterrows()]
+        selected = st.selectbox("Select Event", event_options, key="tab3_select")
         idx = event_options.index(selected)
-        sel = df.iloc[idx]
+        sel = df.iloc[idx].to_dict()
+
         c1, c2 = st.columns(2)
         with c1:
+            # ── Classification ─────────────────────────────────────────────
             st.markdown("**🏷️ Classification**")
             evt = str(sel.get("Event_Type", ""))
             is_deal = evt in ("Takeover", "Spin-Off", "Stock Distribution", "Merger")
+
             if is_deal:
                 detail = {
-                    "Event_Type": sel.get("Event_Type"),
-                    "Subtype":    sel.get("Subtype"),
+                    "Event_Type":          sel.get("Event_Type"),
+                    "Subtype":             sel.get("Subtype"),
+                    "Mandatory_Voluntary": sel.get("MA_Mand_Vol"),
                 }
-                # Takeover-specific fields
                 if evt == "Takeover":
                     detail.update({
-                        "Offeror":             sel.get("MA_Offeror"),
-                        "Hostile":             sel.get("MA_Hostile"),
-                        "Deal_Subtype_Code":   sel.get("MA_Event_Subtype"),
+                        "Offeror":           sel.get("MA_Offeror"),
+                        "Hostile":           sel.get("MA_Hostile"),
+                        "Deal_Subtype_Code": sel.get("MA_Event_Subtype"),
                     })
-                # All deal types
                 detail.update({
-                    "Mandatory_Voluntary": sel.get("MA_Mand_Vol"),
                     "Counterparty_Ticker": sel.get("MA_Offeror_Ticker"),
                     "Counterparty_ISIN":   sel.get("MA_Offeror_ISIN"),
                     "Spun_Off_Terms":      sel.get("Spun_Off_Terms"),
-                    "Stock_Ratio":         sel.get("MA_Stock_Ratio"),
+                    "Stock_Dist_Ratio":    sel.get("MA_Stock_Ratio"),
                     "Cash_Price":          sel.get("MA_Cash_Price"),
                     "Cash_Currency":       sel.get("MA_Cash_Currency"),
                     "Mixed_Cash":          sel.get("MA_Mixed_Cash"),
@@ -844,17 +849,24 @@ with tab3:
                     "Default_Option":    sel.get("Default_Option"),
                     "Election_Deadline": sel.get("optionelectiondt"),
                 }.items() if v not in (None, "")})
+
+            # ── Lifecycle ──────────────────────────────────────────────────
             st.markdown("**⏱️ Lifecycle**")
             st.json({k: v for k, v in {
+                "Ex_Date":       sel.get("exdt"),
+                "Pay_Date":      sel.get("paydt"),
+                "Record_Date":   sel.get("recorddt"),
                 "Creation_Date": sel.get("Creation_Date"),
                 "Feed_Gen_Date": sel.get("feedgendate"),
                 "Evt_Action":    sel.get("evtactioncd"),
                 "LST_Action":    sel.get("lstactioncd"),
                 "NTS_Action":    sel.get("ntsactioncd"),
             }.items() if v not in (None, "")})
+
         with c2:
+            # ── Raw Fields — all columns, nothing filtered ─────────────────
             st.markdown("**📄 Raw Fields**")
-            st.json({col: sel.get(col, "") for col in RAW_COLUMNS if sel.get(col) not in (None, "")})
+            st.json({col: sel.get(col, "") for col in RAW_COLUMNS})
 
 # ── Export ────────────────────────────────────────────────────────────────────
 st.divider()
