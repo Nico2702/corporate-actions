@@ -430,7 +430,7 @@ def merge_events(records_list):
 MA_FIELDS = [
     "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
     "MA_Cash_Price", "MA_Cash_Currency",
-    "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+    "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
     "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
     "MA_Effective_Date", "MA_Exp_Completion",
     "MA_Merger_Status",
@@ -469,6 +469,7 @@ def build_rows(processed_records, show_ignored):
             row["MA_Cash_Price"]           = r.get("_ma_cash_price", "")
             row["MA_Cash_Currency"]        = r.get("_ma_cash_currency", "")
             row["MA_Stock_Ratio"]          = r.get("_ma_stock_ratio", "")
+            row["Spun_Off_Terms"]          = r.get("_ma_stock_ratio", "")  # already decimal for TKOVR
             row["MA_Mixed_Cash"]           = r.get("_ma_mixed_cash", "")
             row["MA_Mixed_Currency"]       = r.get("_ma_mixed_currency", "")
             row["MA_Mixed_Ratio"]          = r.get("_ma_mixed_stock_ratio", "")
@@ -486,6 +487,8 @@ def build_rows(processed_records, show_ignored):
             row["MA_Cash_Price"]           = cl["ma_cash_price"]
             row["MA_Cash_Currency"]        = cl["ma_cash_currency"]
             row["MA_Stock_Ratio"]          = cl["ma_stock_ratio"]
+            spun_terms = safe_div(r.get("rationew"), r.get("ratioold"))
+            row["Spun_Off_Terms"]          = f"{spun_terms:.6f}" if spun_terms else ""
             row["MA_Mixed_Cash"]           = cl["ma_mixed_cash"]
             row["MA_Mixed_Ratio"]          = cl["ma_mixed_stock_ratio"]
             row["MA_Offeror_ISIN"]         = cl["ma_offeror_isin"]
@@ -497,6 +500,8 @@ def build_rows(processed_records, show_ignored):
             row["Subtype"]             = cl["ma_subtype"]
             row["MA_Mand_Vol"]         = cl["ma_mandatory_voluntary"]
             row["MA_Stock_Ratio"]      = cl["ma_stock_ratio"]
+            spun_terms = safe_div(r.get("rationew"), r.get("ratioold"))
+            row["Spun_Off_Terms"]      = f"{spun_terms:.6f}" if spun_terms else ""
             row["MA_Offeror_ISIN"]     = cl["ma_offeror_isin"]
             row["MA_Offeror_Ticker"]   = cl["ma_offeror_ticker"]
             row["MA_Effective_Date"]   = cl["ma_effective_date"]
@@ -709,7 +714,7 @@ with tab1:
         # Takeover / Merger / Spin-Off shared
         "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
         "MA_Cash_Price", "MA_Cash_Currency",
-        "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+        "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
         "MA_Mixed_Cash", "MA_Mixed_Currency", "MA_Mixed_Ratio",
         # Spin-Off / Distribution / Merger specific
         "MA_Effective_Date", "MA_Exp_Completion",
@@ -743,6 +748,7 @@ with tab1:
             "MA_Hostile":           st.column_config.TextColumn("Hostile",             width=70),
             "MA_Mand_Vol":          st.column_config.TextColumn("M/V",                width=50),
             "MA_Event_Subtype":     st.column_config.TextColumn("Deal Subtype",        width=120),
+            "Spun_Off_Terms":       st.column_config.NumberColumn("Spun-Off Terms",      width=115, format="%.6f"),
             "MA_Stock_Ratio":       st.column_config.TextColumn("Stock/Dist Ratio",    width=120),
             "MA_Mixed_Ratio":       st.column_config.TextColumn("Mixed Ratio",         width=100),
             "MA_Offeror_ISIN":      st.column_config.TextColumn("Counterparty ISIN",   width=140),
@@ -793,6 +799,7 @@ with tab3:
                 detail.update({
                     "Counterparty_Ticker": sel.get("MA_Offeror_Ticker"),
                     "Counterparty_ISIN":   sel.get("MA_Offeror_ISIN"),
+                    "Spun_Off_Terms":      sel.get("Spun_Off_Terms"),
                     "Stock_Ratio":         sel.get("MA_Stock_Ratio"),
                     "Cash_Price":          sel.get("MA_Cash_Price"),
                     "Cash_Currency":       sel.get("MA_Cash_Currency"),
