@@ -438,7 +438,6 @@ MA_FIELDS = [
     "Deal_Type",
     "MA_Cash_Terms", "MA_Cash_Terms_Currency",
     "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
-    "MA_Cash_Terms", "MA_Cash_Terms_Currency",
     "MA_Effective_Date", "MA_Exp_Completion",
     "MA_Merger_Status",
     "MA_Close_Date",
@@ -733,7 +732,6 @@ with tab1:
         "Deal_Type",
         "MA_Cash_Terms", "MA_Cash_Terms_Currency",
         "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
-        "MA_Cash_Terms", "MA_Cash_Terms_Currency",
         "MA_Effective_Date", "MA_Exp_Completion",
         "MA_Merger_Status",
         "MA_Close_Date",
@@ -879,7 +877,6 @@ with tab3:
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
                             "MA_Cash_Terms", "MA_Cash_Terms_Currency",
                             "MA_Stock_Ratio", "Spun_Off_Terms",
-                            "MA_Cash_Terms", "MA_Cash_Terms_Currency",
                             "MA_Offeror_ISIN", "MA_Offeror_Ticker",
                             "MA_Effective_Date", "MA_Exp_Completion",
                             "MA_Merger_Status", "MA_Close_Date", "Creation_Date"]
