@@ -445,11 +445,16 @@ with st.sidebar:
     st.markdown("### 🔍 Query Parameters")
     isin   = st.text_input("ISIN", placeholder="e.g. CH1256740924")
     op_mic = st.text_input("Operational MIC", placeholder="e.g. XSWX")
-    col1, col2 = st.columns(2)
-    with col1:
-        from_date = st.date_input("From Ex-Date", value=date.today() - timedelta(days=365))
-    with col2:
-        to_date   = st.date_input("To Ex-Date",   value=date.today() + timedelta(days=180))
+    use_dates = st.checkbox("Filter by Ex-Date range", value=False)
+    if use_dates:
+        col1, col2 = st.columns(2)
+        with col1:
+            from_date = st.date_input("From Ex-Date", value=date.today() - timedelta(days=365))
+        with col2:
+            to_date   = st.date_input("To Ex-Date",   value=date.today() + timedelta(days=180))
+    else:
+        from_date = None
+        to_date   = None
     st.divider()
     st.markdown("### 🎛️ Display Filters")
     show_ignored = st.checkbox("Show ignored events (WAR)", value=False)
@@ -512,8 +517,8 @@ url = (
     f"https://api3.exchange-data.com/GetHistoricalCorporateActions"
     f"?format=JSON&ISIN={isin}"
     f"{'&operationalMic=' + op_mic if op_mic else ''}"
-    f"&fromexdate={from_date.strftime('%Y-%m-%d')}"
-    f"&toexdate={to_date.strftime('%Y-%m-%d')}"
+    f"{'&fromexdate=' + from_date.strftime('%Y-%m-%d') if from_date else ''}"
+    f"{'&toexdate='   + to_date.strftime('%Y-%m-%d')   if to_date   else ''}"
 )
 
 with st.spinner("Fetching data from EDI API..."):
