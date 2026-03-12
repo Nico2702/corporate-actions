@@ -95,7 +95,7 @@ def classify_event(row: dict) -> dict:
         "subscription_price": "", "subscription_currency": "", "subscription_ratio": "",
         # MA / Deal fields (shared across TKOVR, DMRGR, MRGR, DIST)
         "ma_subtype": "", "ma_deal_type": "", "ma_offeror": "", "ma_hostile": "",
-        "ma_cash_price": "", "ma_cash_currency": "",
+        "ma_cash_terms": "", "ma_cash_terms_currency": "",
         "ma_stock_ratio": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
         "ma_cash_terms": "", "ma_cash_terms_currency": "", "ma_mixed_stock_ratio": "",
         "ma_mandatory_voluntary": "",
@@ -131,8 +131,8 @@ def classify_event(row: dict) -> dict:
         result["ma_event_subtype"]       = row.get("eventsubtypecd") or ""
         if paytypecd == "C":
             result["ma_deal_type"]     = "Cash"
-            result["ma_cash_price"]    = row.get("minimumprice") or row.get("maximumprice") or ""
-            result["ma_cash_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
+            result["ma_cash_terms"]    = row.get("minimumprice") or row.get("maximumprice") or ""
+            result["ma_cash_terms_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
         elif paytypecd == "S":
             result["ma_deal_type"]      = "Stock"
             result["ma_offeror_isin"]   = row.get("outisin")         or ""
@@ -143,7 +143,7 @@ def classify_event(row: dict) -> dict:
             result["ma_deal_type"]         = "Cash & Stock"
             result["ma_cash_terms"]        = row.get("minimumprice") or row.get("maximumprice") or ""
             result["ma_cash_terms_currency"]    = row.get("ratecurencd") or row.get("tradingcurencd") or ""
-            result["ma_cash_currency"]     = row.get("ratecurencd") or row.get("tradingcurencd") or ""
+            result["ma_cash_terms_currency"]     = row.get("ratecurencd") or row.get("tradingcurencd") or ""
             result["ma_offeror_isin"]      = row.get("outisin")         or ""
             result["ma_offeror_ticker"]    = row.get("outbbgcompticker") or ""
             ratio = safe_div(rationew, ratioold)
@@ -188,8 +188,8 @@ def classify_event(row: dict) -> dict:
         if ratio is not None:
             result["ma_stock_ratio"] = f"{ratio:.6f}"
         if paytypecd in ("", None) or paytypecd == "C":
-            result["ma_cash_price"]    = row.get("minimumprice") or row.get("maximumprice") or ""
-            result["ma_cash_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
+            result["ma_cash_terms"]    = row.get("minimumprice") or row.get("maximumprice") or ""
+            result["ma_cash_terms_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
         return result
 
     # ── DIST (Stock Distribution — e.g. Reverse Morris Trust distribution) ────
@@ -384,8 +384,8 @@ def merge_events(records_list):
             mixed_opt = next((r for r in group if r.get("paytypecd") == "B"), None)
 
             if cash_opt:
-                base["_ma_cash_price"]    = cash_opt.get("minimumprice") or cash_opt.get("maximumprice") or ""
-                base["_ma_cash_currency"] = cash_opt.get("ratecurencd") or cash_opt.get("tradingcurencd") or ""
+                base["_ma_cash_terms"]    = cash_opt.get("minimumprice") or cash_opt.get("maximumprice") or ""
+                base["_ma_cash_terms_currency"] = cash_opt.get("ratecurencd") or cash_opt.get("tradingcurencd") or ""
             if stock_opt:
                 base["_ma_offeror_isin"]   = stock_opt.get("outisin")          or ""
                 base["_ma_offeror_ticker"] = stock_opt.get("outbbgcompticker")  or ""
@@ -436,7 +436,7 @@ def merge_events(records_list):
 MA_FIELDS = [
     "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
     "Deal_Type",
-    "MA_Cash_Price", "MA_Cash_Currency",
+    "MA_Cash_Terms", "MA_Cash_Terms_Currency",
     "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
     "MA_Cash_Terms", "MA_Cash_Terms_Currency",
     "MA_Effective_Date", "MA_Exp_Completion",
@@ -474,8 +474,8 @@ def build_rows(processed_records, show_ignored):
             row["MA_Hostile"]        = r.get("hostile", "")
             row["MA_Mand_Vol"]       = r.get("mandvoluflag", "")
             row["MA_Event_Subtype"]  = r.get("eventsubtypecd", "")
-            row["MA_Cash_Price"]     = r.get("_ma_cash_price", "")
-            row["MA_Cash_Currency"]  = r.get("_ma_cash_currency", "")
+            row["MA_Cash_Terms"]     = r.get("_ma_cash_terms", "")
+            row["MA_Cash_Terms_Currency"]  = r.get("_ma_cash_terms_currency", "")
             row["MA_Stock_Ratio"]    = r.get("_ma_stock_ratio", "")
             row["MA_Offeror_ISIN"]   = r.get("_ma_offeror_isin", "")
             row["MA_Offeror_Ticker"] = r.get("_ma_offeror_ticker", "")
@@ -489,8 +489,8 @@ def build_rows(processed_records, show_ignored):
             row["MA_Hostile"]        = cl["ma_hostile"]
             row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
             row["MA_Event_Subtype"]  = cl["ma_event_subtype"]
-            row["MA_Cash_Price"]     = cl["ma_cash_price"]
-            row["MA_Cash_Currency"]  = cl["ma_cash_currency"]
+            row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
+            row["MA_Cash_Terms_Currency"]  = cl["ma_cash_terms_currency"]
             row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
             row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
             row["MA_Cash_Terms_Currency"] = cl["ma_cash_terms_currency"]
@@ -514,8 +514,8 @@ def build_rows(processed_records, show_ignored):
             row["MA_Effective_Date"] = cl["ma_effective_date"]
             row["MA_Exp_Completion"] = cl["ma_exp_completion"]
             row["MA_Merger_Status"]  = cl["ma_merger_status"]
-            row["MA_Cash_Price"]     = cl["ma_cash_price"]
-            row["MA_Cash_Currency"]  = cl["ma_cash_currency"]
+            row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
+            row["MA_Cash_Terms_Currency"]  = cl["ma_cash_terms_currency"]
 
         elif is_election:
             row["Event_Type"]        = "Cash or Stock Dividend"
@@ -731,7 +731,7 @@ with tab1:
     ma_display = [
         "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
         "Deal_Type",
-        "MA_Cash_Price", "MA_Cash_Currency",
+        "MA_Cash_Terms", "MA_Cash_Terms_Currency",
         "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
         "MA_Cash_Terms", "MA_Cash_Terms_Currency",
         "MA_Effective_Date", "MA_Exp_Completion",
@@ -756,8 +756,6 @@ with tab1:
             "recorddt":             st.column_config.DateColumn("Record Date"),
             "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",        format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
-            "MA_Cash_Price":        st.column_config.NumberColumn("Cash Amount",        format="%.4f"),
-            "MA_Cash_Currency":     st.column_config.TextColumn("Cash Currency",        width=110),
             "MA_Cash_Terms":          st.column_config.NumberColumn("Cash Terms",          format="%.4f"),
             "MA_Cash_Terms_Currency": st.column_config.TextColumn("Cash Terms Currency",  width=120),
             "Default_Option":       st.column_config.TextColumn("Default Option",       width=110),
@@ -830,8 +828,6 @@ with tab3:
                     "Counterparty_ISIN":   sel.get("MA_Offeror_ISIN"),
                     "Spun_Off_Terms":      sel.get("Spun_Off_Terms"),
                     "Stock_Terms":         sel.get("MA_Stock_Ratio"),
-                    "Cash_Price":          sel.get("MA_Cash_Price"),
-                    "Cash_Currency":       sel.get("MA_Cash_Currency"),
                     "Mixed_Cash":          sel.get("MA_Cash_Terms"),
                     "Effective_Date":      sel.get("MA_Effective_Date"),
                     "Exp_Completion":      sel.get("MA_Exp_Completion"),
@@ -881,7 +877,7 @@ with tab3:
                             "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio",
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
-                            "MA_Cash_Price", "MA_Cash_Currency",
+                            "MA_Cash_Terms", "MA_Cash_Terms_Currency",
                             "MA_Stock_Ratio", "Spun_Off_Terms",
                             "MA_Cash_Terms", "MA_Cash_Terms_Currency",
                             "MA_Offeror_ISIN", "MA_Offeror_Ticker",
