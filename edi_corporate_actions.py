@@ -235,6 +235,7 @@ RAW_COLUMNS = [
     "issueprice", "entissueprice", "depfees",
     "outsectycd", "operationalmic", "isin", "issuername",
     "frequency", "periodenddt", "ntschangedt",
+    "lstactioncd", "ntsactioncd",
 ]
 
 EVENT_TYPE_COLORS = {
@@ -427,6 +428,7 @@ with tab1:
         "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
+        "lstactioncd", "ntsactioncd",
         "eventid", "isin", "issuername", "operationalmic"
     ]
     display_cols = [c for c in display_cols if c in df.columns]
@@ -443,6 +445,8 @@ with tab1:
             "recorddt":         st.column_config.DateColumn("Record Date"),
             "Dividend_Amount":  st.column_config.NumberColumn("Div Amount", format="%.4f"),
             "Sub_Price":        st.column_config.NumberColumn("Sub Price", format="%.4f"),
+            "lstactioncd":      st.column_config.TextColumn("LST Action", width=90),
+            "ntsactioncd":      st.column_config.TextColumn("NTS Action", width=90),
         }
     )
 
