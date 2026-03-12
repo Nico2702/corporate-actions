@@ -714,9 +714,16 @@ st.divider()
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["🏷️ Classified Events", "📄 Raw API Fields", "🔎 Event Detail"])
+tab_col, toggle_col = st.columns([6, 2])
+with tab_col:
+    tab1, tab2, tab3 = st.tabs(["🏷️ Classified Events", "📄 Raw API Fields", "🔎 Event Detail"])
+with toggle_col:
+    st.markdown("<div style='padding-top:8px'>", unsafe_allow_html=True)
+    hide_other = st.toggle("Hide 'Other' events", value=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with tab1:
+    df_display = df[df["Event_Type"] != "Other"] if hide_other else df
     div_display = [
         "Event_Type", "Subtype", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
@@ -741,7 +748,7 @@ with tab1:
     ]
     display_cols = [c for c in div_display + ma_display + meta_display if c in df.columns]
     st.dataframe(
-        df[display_cols],
+        df_display[display_cols],
         use_container_width=True,
         height=500,
         column_config={
