@@ -90,6 +90,18 @@ def parse_feedgendate(val):
 
 
 # ── Classification ────────────────────────────────────────────────────────────
+def fmt_stock_terms(rationew, ratioold) -> str:
+    """Format rationew:ratioold exactly as delivered by EDI."""
+    try:
+        if not rationew or not ratioold:
+            return ""
+        rn = float(rationew); ro = float(ratioold)
+        # Show as integers if both are whole numbers, otherwise as-is
+        rn_str = str(int(rn)) if rn == int(rn) else str(rationew)
+        ro_str = str(int(ro)) if ro == int(ro) else str(ratioold)
+        return f"{rn_str} : {ro_str}"
+    except Exception:
+        return ""
 def classify_event(row: dict) -> dict:
     result = {
         "event_type": "Other", "subtype": "",
@@ -100,7 +112,7 @@ def classify_event(row: dict) -> dict:
         # MA / Deal fields (shared across TKOVR, DMRGR, MRGR, DIST)
         "ma_subtype": "", "ma_deal_type": "", "ma_offeror": "", "ma_hostile": "",
         "ma_cash_terms": "", "ma_cash_terms_currency": "",
-        "ma_stock_ratio": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
+        "eca_stock_ratio": "", "eca_stock_terms": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
         "ma_cash_terms": "", "ma_cash_terms_currency": "",
         "ma_mandatory_voluntary": "",
         "ma_effective_date": "", "ma_exp_completion": "",
@@ -142,7 +154,8 @@ def classify_event(row: dict) -> dict:
             result["ma_offeror_isin"]   = row.get("outisin")         or ""
             result["ma_offeror_ticker"] = row.get("outbbgcompticker") or ""
             ratio = safe_div(rationew, ratioold)
-            result["ma_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
+            result["eca_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
+            result["eca_stock_terms"]    = fmt_stock_terms(rationew, ratioold) if ratio else ""
         elif paytypecd == "B":
             result["ma_deal_type"]         = "Cash & Stock"
             result["ma_cash_terms"]        = row.get("minimumprice") or row.get("maximumprice") or ""
@@ -151,7 +164,8 @@ def classify_event(row: dict) -> dict:
             result["ma_offeror_isin"]      = row.get("outisin")         or ""
             result["ma_offeror_ticker"]    = row.get("outbbgcompticker") or ""
             ratio = safe_div(rationew, ratioold)
-            result["ma_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
+            result["eca_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
+            result["eca_stock_terms"] = fmt_stock_terms(rationew, ratioold) if ratio else ""
         elif paytypecd == "D":
             result["ma_deal_type"] = "Debenture"
         else:
@@ -170,11 +184,8 @@ def classify_event(row: dict) -> dict:
         result["ma_exp_completion"]      = row.get("expcompletiondt") or ""
         ratio = safe_div(rationew, ratioold)
         if ratio is not None:
-            rn = float(rationew); ro = float(ratioold)
-            if rn == int(rn) and ro == int(ro):
-                result["ma_stock_ratio"] = f"{int(rn)} : {int(ro)}"
-            else:
-                result["ma_stock_ratio"] = f"{ratio:.6f}"
+            result["eca_stock_ratio"] = f"{ratio:.6f}"
+            result["eca_stock_terms"] = fmt_stock_terms(rationew, ratioold)
         return result
 
     # ── MRGR (Merger — target distributes acquirer shares) ────────────────────
@@ -190,7 +201,8 @@ def classify_event(row: dict) -> dict:
         result["ma_exp_completion"]      = row.get("expcompletiondt") or ""
         ratio = safe_div(rationew, ratioold)
         if ratio is not None:
-            result["ma_stock_ratio"] = f"{ratio:.6f}"
+            result["eca_stock_ratio"] = f"{ratio:.6f}"
+            result["eca_stock_terms"] = fmt_stock_terms(rationew, ratioold)
         if paytypecd in ("", None) or paytypecd == "C":
             result["ma_cash_terms"]    = row.get("minimumprice") or row.get("maximumprice") or ""
             result["ma_cash_terms_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
@@ -208,7 +220,8 @@ def classify_event(row: dict) -> dict:
         result["ma_exp_completion"]      = row.get("expcompletiondt") or ""
         ratio = safe_div(rationew, ratioold)
         if ratio is not None:
-            result["ma_stock_ratio"] = f"{ratio:.6f}"
+            result["eca_stock_ratio"] = f"{ratio:.6f}"
+            result["eca_stock_terms"] = fmt_stock_terms(rationew, ratioold)
         return result
 
     # ── Rights Issue ──────────────────────────────────────────────────────────
@@ -435,15 +448,17 @@ def merge_events(records_list):
                 base["_ma_offeror_isin"]   = stock_opt.get("outisin")          or ""
                 base["_ma_offeror_ticker"] = stock_opt.get("outbbgcompticker")  or ""
                 ratio = safe_div(stock_opt.get("rationew"), stock_opt.get("ratioold"))
-                base["_ma_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
+                base["_eca_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
+                base["_eca_stock_terms"]    = fmt_stock_terms(stock_opt.get("rationew"), stock_opt.get("ratioold"))
             if mixed_opt:
                 base["_ma_cash_terms"]        = mixed_opt.get("minimumprice") or mixed_opt.get("maximumprice") or ""
                 base["_ma_cash_terms_currency"]    = mixed_opt.get("ratecurencd") or mixed_opt.get("tradingcurencd") or ""
                 base["_ma_offeror_isin"]      = base.get("_ma_offeror_isin")   or mixed_opt.get("outisin")          or ""
                 base["_ma_offeror_ticker"]    = base.get("_ma_offeror_ticker") or mixed_opt.get("outbbgcompticker")  or ""
                 ratio = safe_div(mixed_opt.get("rationew"), mixed_opt.get("ratioold"))
-                if ratio and not base.get("_ma_stock_ratio"):
-                    base["_ma_stock_ratio"] = f"{ratio:.6f}"
+                if ratio and not base.get("_eca_stock_ratio"):
+                    base["_eca_stock_ratio"] = f"{ratio:.6f}"
+                    base["_eca_stock_terms"] = fmt_stock_terms(mixed_opt.get("rationew"), mixed_opt.get("ratioold"))
                 elif ratio:
                     base["_ma_cash_terms_ratio"] = f"{ratio:.6f}"  # preserve for Mixed Cash component
 
@@ -482,7 +497,7 @@ MA_FIELDS = [
     "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
     "Deal_Type",
     "MA_Cash_Terms", "MA_Cash_Terms_Currency",
-    "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+    "ECA_Stock_Ratio", "ECA_Stock_Terms", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
     "MA_Effective_Date", "MA_Exp_Completion",
     "MA_Merger_Status",
     "MA_Close_Date",
@@ -527,7 +542,8 @@ def build_rows(processed_records, show_ignored):
             row["MA_Event_Subtype"]  = r.get("eventsubtypecd", "")
             row["MA_Cash_Terms"]     = r.get("_ma_cash_terms", "")
             row["MA_Cash_Terms_Currency"]  = r.get("_ma_cash_terms_currency", "")
-            row["MA_Stock_Ratio"]    = r.get("_ma_stock_ratio", "")
+            row["ECA_Stock_Ratio"]    = r.get("_eca_stock_ratio", "")
+            row["ECA_Stock_Terms"]    = r.get("_eca_stock_terms", "")
             row["MA_Offeror_ISIN"]   = r.get("_ma_offeror_isin", "")
             row["MA_Offeror_Ticker"] = r.get("_ma_offeror_ticker", "")
             row["MA_Close_Date"]     = r.get("closedt", "")
@@ -542,7 +558,8 @@ def build_rows(processed_records, show_ignored):
             row["MA_Event_Subtype"]  = cl["ma_event_subtype"]
             row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
             row["MA_Cash_Terms_Currency"]  = cl["ma_cash_terms_currency"]
-            row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
+            row["ECA_Stock_Ratio"]    = cl["eca_stock_ratio"]
+            row["ECA_Stock_Terms"]    = cl["eca_stock_terms"]
             row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
             row["MA_Cash_Terms_Currency"] = cl["ma_cash_terms_currency"]
             row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
@@ -557,7 +574,8 @@ def build_rows(processed_records, show_ignored):
             row["Subtype"]           = cl["ma_subtype"]   # "Demerger", "Share Distribution", "Announcement"
             row["Deal_Type"]         = cl["ma_deal_type"]
             row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
-            row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
+            row["ECA_Stock_Ratio"]    = cl["eca_stock_ratio"]
+            row["ECA_Stock_Terms"]    = cl["eca_stock_terms"]
             row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
             row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
             row["MA_Effective_Date"] = cl["ma_effective_date"]
@@ -782,7 +800,7 @@ with tab1:
         "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
         "Deal_Type",
         "MA_Cash_Terms", "MA_Cash_Terms_Currency",
-        "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+        "ECA_Stock_Ratio", "ECA_Stock_Terms", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
         "MA_Effective_Date", "MA_Exp_Completion",
         "MA_Merger_Status",
         "MA_Close_Date",
@@ -815,7 +833,8 @@ with tab1:
             "MA_Mand_Vol":          st.column_config.TextColumn("M/V",                 width=50),
             "MA_Event_Subtype":     st.column_config.TextColumn("Deal Subtype",         width=120),
             "Deal_Type":            st.column_config.TextColumn("Deal Type",             width=120),
-            "MA_Stock_Ratio":       st.column_config.TextColumn("Stock Terms",            width=120),
+            "ECA_Stock_Ratio":       st.column_config.TextColumn("Stock Terms",            width=120),
+            "ECA_Stock_Terms":       st.column_config.TextColumn("Stock Ratio",            width=110),
             "MA_Offeror_ISIN":      st.column_config.TextColumn("Counterparty ISIN",    width=140),
             "MA_Offeror_Ticker":    st.column_config.TextColumn("Counterparty Ticker",  width=130),
             "MA_Effective_Date":    st.column_config.TextColumn("Effective Date",        width=120),
@@ -875,7 +894,8 @@ with tab3:
                 detail.update({
                     "Counterparty_Ticker": sel.get("MA_Offeror_Ticker"),
                     "Counterparty_ISIN":   sel.get("MA_Offeror_ISIN"),
-                    "Stock_Terms":         sel.get("MA_Stock_Ratio"),
+                    "Stock_Terms":         sel.get("ECA_Stock_Ratio"),
+                    "Stock_Ratio":         sel.get("ECA_Stock_Terms"),
                     "Cash_Terms":          sel.get("MA_Cash_Terms"),
                     "Cash_Terms_Currency": sel.get("MA_Cash_Terms_Currency"),
                     "Effective_Date":      sel.get("MA_Effective_Date"),
@@ -928,7 +948,7 @@ with tab3:
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
                             "MA_Cash_Terms", "MA_Cash_Terms_Currency",
-                            "MA_Stock_Ratio",
+                            "ECA_Stock_Ratio", "ECA_Stock_Terms",
                             "MA_Offeror_ISIN", "MA_Offeror_Ticker",
                             "MA_Effective_Date", "MA_Exp_Completion",
                             "MA_Merger_Status", "MA_Close_Date", "Creation_Date"]
