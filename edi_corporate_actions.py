@@ -499,11 +499,15 @@ def build_rows(processed_records, show_ignored):
             continue
 
         row = {col: r.get(col, "") for col in RAW_COLUMNS}
-        # Ex-Date fallback: effectivedt, then closedt for completed mergers
+        # Ex-Date fallback — M&A events: prefer closedt (offer expiry/completion)
+        # over effectivedt (offer commencement), then effectivedt as last resort.
+        # All other events: effectivedt only.
         if not row.get("exdt"):
-            row["exdt"] = r.get("effectivedt", "")
-        if not row.get("exdt") and r.get("eventsubtypecd") == "MRGR":
-            row["exdt"] = r.get("closedt", "")
+            _ecd = (r.get("eventcd") or "").upper().strip()
+            if _ecd in ("TKOVR", "MRGR"):
+                row["exdt"] = r.get("closedt", "") or r.get("effectivedt", "")
+            else:
+                row["exdt"] = r.get("effectivedt", "")
         # initialise derived fields
         for f in DIV_FIELDS + MA_FIELDS:
             row[f] = ""
