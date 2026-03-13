@@ -482,7 +482,7 @@ MA_FIELDS = [
     "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
     "Deal_Type",
     "MA_Cash_Terms", "MA_Cash_Terms_Currency",
-    "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+    "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
     "MA_Effective_Date", "MA_Exp_Completion",
     "MA_Merger_Status",
     "MA_Close_Date",
@@ -558,8 +558,6 @@ def build_rows(processed_records, show_ignored):
             row["Deal_Type"]         = cl["ma_deal_type"]
             row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
             row["MA_Stock_Ratio"]    = cl["ma_stock_ratio"]
-            spun_terms = safe_div(r.get("rationew"), r.get("ratioold"))
-            row["Spun_Off_Terms"]    = f"{spun_terms:.6f}" if spun_terms else ""
             row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
             row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
             row["MA_Effective_Date"] = cl["ma_effective_date"]
@@ -784,7 +782,7 @@ with tab1:
         "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
         "Deal_Type",
         "MA_Cash_Terms", "MA_Cash_Terms_Currency",
-        "Spun_Off_Terms", "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
+        "MA_Stock_Ratio", "MA_Offeror_ISIN", "MA_Offeror_Ticker",
         "MA_Effective_Date", "MA_Exp_Completion",
         "MA_Merger_Status",
         "MA_Close_Date",
@@ -817,7 +815,6 @@ with tab1:
             "MA_Mand_Vol":          st.column_config.TextColumn("M/V",                 width=50),
             "MA_Event_Subtype":     st.column_config.TextColumn("Deal Subtype",         width=120),
             "Deal_Type":            st.column_config.TextColumn("Deal Type",             width=120),
-            "Spun_Off_Terms":       st.column_config.NumberColumn("Spun-Off Terms",     width=115, format="%.6f"),
             "MA_Stock_Ratio":       st.column_config.TextColumn("Stock Terms",            width=120),
             "MA_Offeror_ISIN":      st.column_config.TextColumn("Counterparty ISIN",    width=140),
             "MA_Offeror_Ticker":    st.column_config.TextColumn("Counterparty Ticker",  width=130),
@@ -878,7 +875,6 @@ with tab3:
                 detail.update({
                     "Counterparty_Ticker": sel.get("MA_Offeror_Ticker"),
                     "Counterparty_ISIN":   sel.get("MA_Offeror_ISIN"),
-                    "Spun_Off_Terms":      sel.get("Spun_Off_Terms"),
                     "Stock_Terms":         sel.get("MA_Stock_Ratio"),
                     "Cash_Terms":          sel.get("MA_Cash_Terms"),
                     "Cash_Terms_Currency": sel.get("MA_Cash_Terms_Currency"),
@@ -932,7 +928,7 @@ with tab3:
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
                             "MA_Cash_Terms", "MA_Cash_Terms_Currency",
-                            "MA_Stock_Ratio", "Spun_Off_Terms",
+                            "MA_Stock_Ratio",
                             "MA_Offeror_ISIN", "MA_Offeror_Ticker",
                             "MA_Effective_Date", "MA_Exp_Completion",
                             "MA_Merger_Status", "MA_Close_Date", "Creation_Date"]
