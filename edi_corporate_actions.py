@@ -26,6 +26,7 @@ st.markdown("""
     .badge-takeover { background: #1a2a2a; color: #00bcd4; border: 1px solid #00bcd4; }
     .badge-demerger { background: #2a1a2a; color: #e040fb; border: 1px solid #e040fb; }
     .badge-merger   { background: #1a1a2a; color: #7986cb; border: 1px solid #7986cb; }
+    .badge-delisting{ background: #2a1a1a; color: #ff5252; border: 1px solid #ff5252; }
     .badge-other    { background: #2a2a2a; color: #aaa;    border: 1px solid #aaa; }
     section[data-testid="stSidebar"] { background-color: #161b22; }
     h1, h2, h3 { color: #ffffff; }
@@ -47,6 +48,7 @@ EVENT_TYPE_COLORS = {
     "Merger & Acquisition":   "badge-takeover",
     "Spin-Off":               "badge-demerger",
     "Stock Distribution":     "badge-demerger",
+    "Delisting":              "badge-delisting",
     "Other":                  "badge-other",
 }
 
@@ -343,6 +345,18 @@ def classify_event(row: dict) -> dict:
             result["event_type"] = "Merger & Acquisition"
             result["ma_subtype"] = "Announcement"
             result["ma_mandatory_voluntary"] = row.get("mandvoluflag") or ""
+        return result
+
+    # ── LSTAT (Listing Status Change → Delisting) ─────────────────────────────
+    if eventcd == "LSTAT":
+        result["event_type"] = "Delisting"
+        related = (row.get("relatedeventcd") or "").upper().strip()
+        if related in ("TKOVR", "MRGR"):
+            result["subtype"] = "Post-Merger"
+        elif related == "DMRGR":
+            result["subtype"] = "Post-Spin-Off"
+        else:
+            result["subtype"] = related or ""
         return result
 
     return result
