@@ -313,6 +313,10 @@ def classify_event(row: dict) -> dict:
             result["event_type"] = "Special Dividend"; result["subtype"] = "Long-Term Capital Gains"
         elif eventcd == "PID":
             result["event_type"] = "Cash Dividend"; result["subtype"] = "Property Income Distribution (PID)"
+        elif marker == "INT":
+            result["event_type"] = "Cash Dividend"; result["subtype"] = "Interim"
+        elif marker == "FNL":
+            result["event_type"] = "Cash Dividend"; result["subtype"] = "Final"
         else:
             result["event_type"] = "Cash Dividend"
 
@@ -490,9 +494,11 @@ def build_rows(processed_records, show_ignored):
             continue
 
         row = {col: r.get(col, "") for col in RAW_COLUMNS}
-        # Ex-Date fallback: use effectivedt when exdt is empty
+        # Ex-Date fallback: effectivedt, then closedt for completed mergers
         if not row.get("exdt"):
             row["exdt"] = r.get("effectivedt", "")
+        if not row.get("exdt") and r.get("eventsubtypecd") == "MRGR":
+            row["exdt"] = r.get("closedt", "")
         # initialise derived fields
         for f in DIV_FIELDS + MA_FIELDS:
             row[f] = ""
