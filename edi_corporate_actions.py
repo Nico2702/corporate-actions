@@ -319,6 +319,8 @@ def classify_event(row: dict) -> dict:
             result["event_type"] = "Cash Dividend"; result["subtype"] = "Interim"
         elif marker == "FNL":
             result["event_type"] = "Cash Dividend"; result["subtype"] = "Final"
+        elif marker == "ANL":
+            result["event_type"] = "Cash Dividend"; result["subtype"] = "Annual"
         elif marker == "VAR":
             result["event_type"] = "Special Dividend"; result["subtype"] = "Variable"
         else:
