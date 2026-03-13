@@ -348,6 +348,19 @@ def classify_event(row: dict) -> dict:
     return result
 
 
+def normalize_dates(records):
+    """Normalize date fields: replace slashes with dashes (e.g. 2026/04/01 → 2026-04-01)."""
+    date_fields = ["exdt", "paydt", "recorddt", "declarationdt", "effectivedt",
+                   "expcompletiondt", "closedt", "unconditionaldt", "compulsoryacqdt",
+                   "optionelectiondt", "ntschangedt", "periodenddt", "eventcreatedt", "feedgendate"]
+    for r in records:
+        for f in date_fields:
+            v = r.get(f)
+            if v and isinstance(v, str):
+                r[f] = v.replace("/", "-")
+    return records
+
+
 # ── Step 1: Deduplicate ───────────────────────────────────────────────────────
 def deduplicate(records):
     raw_df = pd.DataFrame(records)
@@ -653,7 +666,7 @@ if fetch_btn:
     with st.spinner("Fetching data from EDI API..."):
         try:
             response = requests.get(url, headers={"authorization": api_key}, timeout=30)
-            st.session_state["edi_records"]     = response.json().get("jsondata", [])
+            st.session_state["edi_records"]     = normalize_dates(response.json().get("jsondata", []))
             st.session_state["edi_rec_count"]   = response.headers.get("X-Record-Count",       "–")
             st.session_state["edi_total_recs"]  = response.headers.get("X-Total-Records",      "–")
             st.session_state["edi_rate_remain"] = response.headers.get("X-Ratelimit-Remaining","–")
