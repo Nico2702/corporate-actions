@@ -91,7 +91,7 @@ def classify_event(row: dict) -> dict:
         "event_type": "Other", "subtype": "",
         "dividend_amount": "", "tax_marker": "", "dividend_currency": "",
         "stock_dividend_pct": "", "stock_dividend_ratio": "",
-        "split_ratio": "",
+        "split_ratio": "", "split_terms": "",
         "subscription_price": "", "subscription_currency": "", "subscription_ratio": "",
         # MA / Deal fields (shared across TKOVR, DMRGR, MRGR, DIST)
         "ma_subtype": "", "ma_deal_type": "", "ma_offeror": "", "ma_hostile": "",
@@ -223,6 +223,8 @@ def classify_event(row: dict) -> dict:
         result["subtype"]    = "Forward Stock Split"
         ratio = safe_div(rationew, ratioold)
         result["split_ratio"] = f"{ratio:.6f}" if ratio else ""
+        if rationew and ratioold:
+            result["split_terms"] = f"{rationew} : {ratioold}"
         return result
 
     if eventcd in {"CONSD", "RSPLT"}:
@@ -230,6 +232,8 @@ def classify_event(row: dict) -> dict:
         result["subtype"]    = "Reverse Stock Split"
         ratio = safe_div(rationew, ratioold)
         result["split_ratio"] = f"{ratio:.6f}" if ratio else ""
+        if rationew and ratioold:
+            result["split_terms"] = f"{rationew} : {ratioold}"
         return result
 
     # ── US: DIV/BON + S → Stock Split ────────────────────────────────────────
@@ -242,6 +246,7 @@ def classify_event(row: dict) -> dict:
         try:
             rn = float(rationew); ro = float(ratioold)
             result["split_ratio"] = f"{(rn + ro) / ro:.6f}"
+            result["split_terms"] = f"{int(rn + ro)} : {int(ro)}"
         except (TypeError, ValueError):
             pass
         return result
@@ -443,7 +448,7 @@ MA_FIELDS = [
     "MA_Close_Date",
 ]
 DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Dividend_Currency",
-              "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio",
+              "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
               "Creation_Date"]
 
@@ -536,6 +541,7 @@ def build_rows(processed_records, show_ignored):
             row["Stock_Div_Pct"]     = cl["stock_dividend_pct"]
             row["Stock_Div_Ratio"]   = cl["stock_dividend_ratio"]
             row["Split_Ratio"]       = cl["split_ratio"]
+            row["Split_Terms"]       = cl["split_terms"]
             row["Sub_Price"]         = cl["subscription_price"]
             row["Sub_Currency"]      = cl["subscription_currency"]
             row["Sub_Ratio"]         = cl["subscription_ratio"]
@@ -723,7 +729,7 @@ with tab1:
         "Event_Type", "Subtype", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
         "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
-        "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio",
+        "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
         "Default_Option", "optionelectiondt",
     ]
@@ -754,6 +760,7 @@ with tab1:
             "recorddt":             st.column_config.DateColumn("Record Date"),
             "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",        format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
+            "Split_Terms":          st.column_config.TextColumn("Split Terms",           width=100),
             "MA_Cash_Terms":          st.column_config.NumberColumn("Cash Terms",          format="%.4f"),
             "MA_Cash_Terms_Currency": st.column_config.TextColumn("Cash Terms Currency",  width=120),
             "Default_Option":       st.column_config.TextColumn("Default Option",       width=110),
@@ -847,6 +854,7 @@ with tab3:
                     "Stock_Div_Pct":     sel.get("Stock_Div_Pct"),
                     "Stock_Div_Ratio":   sel.get("Stock_Div_Ratio"),
                     "Split_Ratio":       sel.get("Split_Ratio"),
+                    "Split_Terms":       sel.get("Split_Terms"),
                     "Sub_Price":         sel.get("Sub_Price"),
                     "Sub_Currency":      sel.get("Sub_Currency"),
                     "Sub_Ratio":         sel.get("Sub_Ratio"),
@@ -873,7 +881,7 @@ with tab3:
             st.markdown("**🔧 Derived Fields**")
             derived_cols = ["Event_Type", "Subtype", "Deal_Type",
                             "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
-                            "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio",
+                            "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
                             "MA_Cash_Terms", "MA_Cash_Terms_Currency",
