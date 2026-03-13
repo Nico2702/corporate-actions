@@ -318,10 +318,15 @@ def classify_event(row: dict) -> dict:
     if eventcd in {"LIQ", "MEM"}:
         result["event_type"] = "Special Dividend"
         result["subtype"]    = "Liquidation" if eventcd == "LIQ" else "Memorial"
+        minprice = row.get("minimumprice") or ""
+        maxprice = row.get("maximumprice") or ""
+        liq_price = minprice if minprice == maxprice and minprice else (minprice or maxprice)
         if gross:
             result["dividend_amount"] = gross; result["tax_marker"] = "GROSS"
         elif net:
             result["dividend_amount"] = net;   result["tax_marker"] = "GROSS"
+        elif liq_price:
+            result["dividend_amount"] = liq_price; result["tax_marker"] = "GROSS"
         result["dividend_currency"] = ratecurencd
         result["depositary_fee"]  = depositary_fee
         result["tax_relief_fee"]  = tax_relief_fee
@@ -364,6 +369,19 @@ def classify_event(row: dict) -> dict:
             result["subtype"] = "Interest on Capital"; result["tax_marker"] = "GROSS (15% WHT)"
         result["depositary_fee"]  = depositary_fee
         result["tax_relief_fee"]  = tax_relief_fee
+        return result
+
+    # ── DIVRC (REIT Dividend Reclassification) ────────────────────────────────
+    if eventcd == "DIVRC":
+        result["event_type"] = "Cash Dividend"
+        result["subtype"]    = "REIT Reclassification"
+        if gross:
+            result["dividend_amount"] = gross; result["tax_marker"] = "GROSS"
+        elif net:
+            result["dividend_amount"] = net;   result["tax_marker"] = "GROSS"
+        result["dividend_currency"] = ratecurencd
+        result["depositary_fee"]    = depositary_fee
+        result["tax_relief_fee"]    = tax_relief_fee
         return result
 
     # ── ANN (Announcement) → route by relatedeventcd ─────────────────────────
