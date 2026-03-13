@@ -463,6 +463,9 @@ def build_rows(processed_records, show_ignored):
             continue
 
         row = {col: r.get(col, "") for col in RAW_COLUMNS}
+        # Ex-Date fallback: use effectivedt when exdt is empty
+        if not row.get("exdt"):
+            row["exdt"] = r.get("effectivedt", "")
         # initialise derived fields
         for f in DIV_FIELDS + MA_FIELDS:
             row[f] = ""
@@ -777,7 +780,7 @@ with tab1:
             "MA_Effective_Date":    st.column_config.TextColumn("Effective Date",        width=120),
             "MA_Exp_Completion":    st.column_config.TextColumn("Exp. Completion",      width=125),
             "MA_Merger_Status":     st.column_config.TextColumn("Merger Status",        width=100),
-            "MA_Close_Date":        st.column_config.TextColumn("Close Date",           width=110),
+            "MA_Close_Date":        st.column_config.TextColumn("Offer Expiry / Close Date", width=150),
             "Creation_Date":        st.column_config.TextColumn("Creation Date",         width=130),
             "feedgendate":          st.column_config.TextColumn("Feed Gen Date",         width=130),
             "evtactioncd":          st.column_config.TextColumn("Evt Action",            width=80),
@@ -841,7 +844,7 @@ with tab3:
                     "Election_Deadline":   sel.get("optionelectiondt"),
                     "Unconditional_Date":  sel.get("unconditionaldt"),
                     "Compulsory_Acq_Date": sel.get("compulsoryacqdt"),
-                    "Close_Date":          sel.get("MA_Close_Date"),
+                    "Offer_Expiry_Close_Date": sel.get("MA_Close_Date"),
                 })
                 st.json({k: v for k, v in detail.items() if v not in (None, "")})
             else:
