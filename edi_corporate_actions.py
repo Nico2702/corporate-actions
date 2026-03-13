@@ -51,6 +51,7 @@ EVENT_TYPE_COLORS = {
     "Stock Distribution":     "badge-demerger",
     "Delisting":              "badge-delisting",
     "Trading Suspension":     "badge-suspension",
+    "ID Change":              "badge-other",
     "Other":                  "badge-other",
 }
 
@@ -118,6 +119,7 @@ def classify_event(row: dict) -> dict:
         "ma_mandatory_voluntary": "",
         "ma_effective_date": "", "ma_exp_completion": "",
         "ma_merger_status": "", "ma_event_subtype": "",
+        "new_name": "", "old_name": "", "id_change_dt": "",
         "ignore": False,
     }
 
@@ -396,6 +398,23 @@ def classify_event(row: dict) -> dict:
                 result["subtype"] = related or ""
         return result
 
+    # ── ISCHG (Issuer Change — Name Change) ───────────────────────────────────
+    if eventcd == "ISCHG":
+        related = (row.get("relatedeventcd") or "").upper().strip()
+        result["event_type"] = "ID Change"
+        if related == "ISCHG":
+            result["subtype"] = "Name Change"
+        elif related == "CORR":
+            result["subtype"] = "Correction"
+        elif related == "CLEAN":
+            result["subtype"] = "Data Clean"
+        else:
+            result["subtype"] = related or ""
+        result["new_name"] = row.get("issnewname") or ""
+        result["old_name"] = row.get("issoldname") or ""
+        result["id_change_dt"] = row.get("namechangedt") or row.get("effectivedt") or ""
+        return result
+
     return result
 
 
@@ -512,6 +531,7 @@ MA_FIELDS = [
     "MA_Effective_Date", "MA_Exp_Completion",
     "MA_Merger_Status",
     "MA_Close_Date",
+    "New_Name", "Old_Name", "ID_Change_Date",
 ]
 DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
@@ -607,6 +627,13 @@ def build_rows(processed_records, show_ignored):
             row["Stock_Div_Pct"]     = f"{ratio*100:.4f}%" if ratio else ""
             row["Stock_Div_Ratio"]   = f"{1+ratio:.6f}"    if ratio else ""
             row["Default_Option"]    = "Cash"
+
+        elif cl["event_type"] == "ID Change":
+            row["Event_Type"]     = "ID Change"
+            row["Subtype"]        = cl["subtype"]
+            row["New_Name"]       = cl["new_name"]
+            row["Old_Name"]       = cl["old_name"]
+            row["ID_Change_Date"] = cl["id_change_dt"]
 
         else:
             row["Event_Type"]        = cl["event_type"]
@@ -819,6 +846,7 @@ with tab1:
         "MA_Effective_Date", "MA_Exp_Completion",
         "MA_Merger_Status",
         "MA_Close_Date",
+        "New_Name", "Old_Name", "ID_Change_Date",
     ]
     meta_display = [
         "Creation_Date",
@@ -858,7 +886,10 @@ with tab1:
             "MA_Exp_Completion":    st.column_config.TextColumn("Exp. Completion",      width=125),
             "MA_Merger_Status":     st.column_config.TextColumn("Merger Status",        width=100),
             "MA_Close_Date":        st.column_config.TextColumn("Offer Expiry / Close Date", width=150),
-            "Creation_Date":        st.column_config.TextColumn("Creation Date",         width=130),
+            "New_Name":             st.column_config.TextColumn("New Name",             width=200),
+            "Old_Name":             st.column_config.TextColumn("Old Name",             width=200),
+            "ID_Change_Date":       st.column_config.TextColumn("Change Date",          width=120),
+            "Creation_Date":        st.column_config.TextColumn("Creation Date",        width=130),
             "feedgendate":          st.column_config.TextColumn("Feed Gen Date",         width=130),
             "evtactioncd":          st.column_config.TextColumn("Evt Action",            width=80),
             "lstactioncd":          st.column_config.TextColumn("LST Action",            width=80),
@@ -922,6 +953,9 @@ with tab3:
                     "Unconditional_Date":  sel.get("unconditionaldt"),
                     "Compulsory_Acq_Date": sel.get("compulsoryacqdt"),
                     "Offer_Expiry_Close_Date": sel.get("MA_Close_Date"),
+                    "New_Name":            sel.get("New_Name"),
+                    "Old_Name":            sel.get("Old_Name"),
+                    "ID_Change_Date":      sel.get("ID_Change_Date"),
                 })
                 st.json({k: v for k, v in detail.items() if v not in (None, "")})
             else:
@@ -970,7 +1004,9 @@ with tab3:
                             "ECA_Stock_Ratio", "ECA_Stock_Terms",
                             "MA_Offeror_ISIN", "MA_Offeror_Ticker",
                             "MA_Effective_Date", "MA_Exp_Completion",
-                            "MA_Merger_Status", "MA_Close_Date", "Creation_Date"]
+                            "MA_Merger_Status", "MA_Close_Date",
+                            "New_Name", "Old_Name", "ID_Change_Date",
+                            "Creation_Date"]
             st.json({col: sel.get(col, "") for col in derived_cols})
 
 # ── Export ────────────────────────────────────────────────────────────────────
