@@ -343,6 +343,9 @@ def classify_event(row: dict) -> dict:
                 if ratio is not None:
                     result["stock_dividend_pct"]   = f"{ratio * 100:.4f}%"
                     result["stock_dividend_ratio"] = f"{ratio:.6f}"
+        elif marker == "MEM":
+            result["event_type"] = "Special Dividend"
+            result["subtype"]    = "Memorial"
         elif marker == "ISC":
             result["event_type"] = "Cash Dividend"; result["subtype"] = "Interest on Capital"
         elif marker == "CGS":
