@@ -485,6 +485,13 @@ def merge_events(records_list):
         eventcd    = (group[0].get("eventcd") or "").upper().strip()
         option_ids = [r.get("optionid", "") for r in group]
 
+        # If multiple records but only because of empty optionid alongside real ones → take non-empty
+        real_ids = [oid for oid in option_ids if str(oid).strip()]
+        if len(set(real_ids)) <= 1:
+            chosen = next((r for r in group if str(r.get("optionid","")).strip()), group[0])
+            merged.append(chosen)
+            continue
+
         # ── TKOVR: multiple optionids → merge all options ─────────────────────
         if eventcd == "TKOVR" and len(set(option_ids)) > 1:
             base = dict(sorted(group, key=lambda r: str(r.get("optionid", "")))[0])
@@ -524,32 +531,65 @@ def merge_events(records_list):
         votings = [r.get("voting", "") for r in group]
         markers = [r.get("marker", "") for r in group]
 
-        # DIV+SPL with multiple optionids: always Special Dividend — take optionid=1 as default
+        # DIV+SPL with multiple optionids: always Special Dividend
+        # Priority: C leg → B leg → group[0]; never take S-only leg
         if "SPL" in markers and len(set(option_ids)) > 1:
-            default_row = next((r for r in group if str(r.get("optionid", "")) == "1"), group[0])
-            combined = dict(default_row)
-            combined["_spl_election"] = True
-            merged.append(combined)
+            default_row = (
+                next((r for r in group if r.get("paytypecd") == "C"), None) or
+                next((r for r in group if r.get("paytypecd") == "B"), None) or
+                group[0]
+            )
+            merged.append(dict(default_row))
             continue
 
         if any(v == "V" for v in votings) and len(set(option_ids)) > 1 and "SPL" not in markers:
-            cash_row  = next((r for r in group if str(r.get("optionid", "")) == "1"), None)
-            stock_row = next((r for r in group if str(r.get("optionid", "")) == "2"), None)
-            if not cash_row or not stock_row:
-                merged.extend(group)
+            # Drop scrip legs (paytypecd=S) — always ignored
+            cash_group = [r for r in group if r.get("paytypecd") != "S"]
+
+            # Check if there is a real stock election leg (paytypecd=B)
+            b_row = next((r for r in cash_group if r.get("paytypecd") == "B"), None)
+
+            if b_row:
+                # Real Cash or Stock election — existing logic
+                cash_row  = next((r for r in cash_group if str(r.get("optionid", "")) == "1"), None)
+                stock_row = next((r for r in group     if str(r.get("optionid", "")) == "2"), None)
+                if not cash_row or not stock_row:
+                    merged.extend(cash_group)
+                    continue
+                combined = dict(cash_row)
+                combined["_is_election"]        = True
+                combined["_opt1_grossdividend"] = cash_row.get("grossdividend", "")
+                combined["_opt1_netdividend"]   = cash_row.get("netdividend", "")
+                combined["_opt2_rationew"]      = stock_row.get("rationew", "")
+                combined["_opt2_ratioold"]      = stock_row.get("ratioold", "")
+                combined["optionelectiondt"]    = (stock_row.get("optionelectiondt") or
+                                                   cash_row.get("optionelectiondt") or "")
+                combined["rationew"]            = stock_row.get("rationew", "")
+                combined["ratioold"]            = stock_row.get("ratioold", "")
+                combined["paytypecd"]           = "B"
+                merged.append(combined)
                 continue
-            combined = dict(cash_row)
-            combined["_is_election"]        = True
-            combined["_opt1_grossdividend"] = cash_row.get("grossdividend", "")
-            combined["_opt1_netdividend"]   = cash_row.get("netdividend", "")
-            combined["_opt2_rationew"]      = stock_row.get("rationew", "")
-            combined["_opt2_ratioold"]      = stock_row.get("ratioold", "")
-            combined["optionelectiondt"]    = (stock_row.get("optionelectiondt") or
-                                               cash_row.get("optionelectiondt") or "")
-            combined["rationew"]            = stock_row.get("rationew", "")
-            combined["ratioold"]            = stock_row.get("ratioold", "")
-            combined["paytypecd"]           = "B"
-            merged.append(combined)
+
+            # Currency election — multiple paytypecd=C with different currencies
+            # Priority: defaultoptionflag=T with amount → optionid=1 with amount → any default
+            def _has_amount(r):
+                return bool(r.get("grossdividend") or r.get("netdividend"))
+
+            chosen = next(
+                (r for r in cash_group if r.get("defaultoptionflag") == "T" and _has_amount(r)),
+                None
+            )
+            if not chosen:
+                chosen = next(
+                    (r for r in cash_group if str(r.get("optionid", "")) == "1" and _has_amount(r)),
+                    None
+                )
+            if not chosen:
+                chosen = next(
+                    (r for r in cash_group if r.get("defaultoptionflag") == "T"),
+                    cash_group[0] if cash_group else group[0]
+                )
+            merged.append(dict(chosen))
             continue
 
         merged.extend(group)
