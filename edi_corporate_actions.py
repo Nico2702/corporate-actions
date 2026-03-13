@@ -28,6 +28,7 @@ st.markdown("""
     .badge-merger   { background: #1a1a2a; color: #7986cb; border: 1px solid #7986cb; }
     .badge-delisting    { background: #2a1a1a; color: #ff5252; border: 1px solid #ff5252; }
     .badge-suspension   { background: #2a2a1a; color: #ffeb3b; border: 1px solid #ffeb3b; }
+    .badge-cancelled    { background: #3a1a1a; color: #ff1744; border: 2px solid #ff1744; font-weight: bold; }
     .badge-other    { background: #2a2a2a; color: #aaa;    border: 1px solid #aaa; }
     section[data-testid="stSidebar"] { background-color: #161b22; }
     h1, h2, h3 { color: #ffffff; }
@@ -679,6 +680,9 @@ def build_rows(processed_records, show_ignored):
         row["_ignored"] = cl["ignore"]
         # Creation_Date — universal across all event types
         row["Creation_Date"] = r.get("eventcreatedt", "")
+        # Evt_Status — human-readable action code
+        _act = (r.get("evtactioncd") or "").upper()
+        row["Evt_Status"] = {"I": "New", "U": "Updated", "D": "Deleted", "C": "Cancelled"}.get(_act, _act)
         rows.append(row)
     return rows
 
@@ -853,10 +857,36 @@ st.divider()
 tab1, tab2, tab3 = st.tabs(["🏷️ Classified Events", "📄 Raw API Fields", "🔎 Event Detail"])
 
 with tab1:
+    # ── Deleted / Cancelled Warning ───────────────────────────────────────────
+    dc_events = df[df["Evt_Status"].isin(["Deleted", "Cancelled"])] if "Evt_Status" in df.columns else pd.DataFrame()
+    # Only actionable if ex-date was known AND at least one value field was populated
+    if not dc_events.empty:
+        has_exdt = dc_events["exdt"].astype(str).str.strip().ne("")
+        has_value = (
+            dc_events["Dividend_Amount"].astype(str).str.strip().ne("") |
+            dc_events["Split_Ratio"].astype(str).str.strip().ne("") |
+            dc_events["Sub_Price"].astype(str).str.strip().ne("") |
+            dc_events["Sub_Ratio"].astype(str).str.strip().ne("") |
+            dc_events["Stock_Div_Ratio"].astype(str).str.strip().ne("") |
+            dc_events["ECA_Stock_Ratio"].astype(str).str.strip().ne("") |
+            dc_events["ECA_Stock_Terms"].astype(str).str.strip().ne("") |
+            dc_events["MA_Cash_Terms"].astype(str).str.strip().ne("")
+        )
+        dc_events = dc_events[has_exdt & has_value]
+    if not dc_events.empty:
+        lines = []
+        for _, r in dc_events.iterrows():
+            lines.append(f"**{r.get('Evt_Status')}** — eventid `{r.get('eventid')}` | "
+                         f"{r.get('Event_Type', 'Other')} | ex-date: {r.get('exdt') or '—'}")
+        st.error(
+            f"⚠️ **{len(dc_events)} event(s) marked as Deleted/Cancelled — "
+            f"remove from system if already loaded.**\n\n" + "\n\n".join(lines)
+        )
+
     hide_other = st.toggle("Hide 'Other' events", value=True)
     df_display = df[df["Event_Type"] != "Other"] if hide_other else df
     div_display = [
-        "Event_Type", "Subtype", "eventcd", "marker", "paytypecd",
+        "Event_Type", "Subtype", "Evt_Status", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
         "Dividend_Amount", "Tax_Marker", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
@@ -886,6 +916,7 @@ with tab1:
         column_config={
             "Event_Type":           st.column_config.TextColumn("Event Type",          width=160),
             "Subtype":              st.column_config.TextColumn("Subtype",              width=210),
+            "Evt_Status":           st.column_config.TextColumn("Status",               width=90),
             "exdt":                 st.column_config.DateColumn("Ex-Date"),
             "paydt":                st.column_config.DateColumn("Pay Date"),
             "recorddt":             st.column_config.DateColumn("Record Date"),
@@ -922,6 +953,21 @@ with tab1:
             "optionid":             st.column_config.TextColumn("Option ID",             width=75),
         }
     )
+
+    # ── Deleted / Cancelled Expander ─────────────────────────────────────────
+    if not dc_events.empty:
+        with st.expander(f"⚠️ Deleted / Cancelled Events ({len(dc_events)})", expanded=False):
+            dc_cols = [c for c in ["Evt_Status", "Event_Type", "Subtype", "eventcd",
+                                    "exdt", "paydt", "eventid", "Creation_Date",
+                                    "feedgendate", "evtactioncd"] if c in dc_events.columns]
+            st.dataframe(dc_events[dc_cols], use_container_width=True,
+                         column_config={
+                             "Evt_Status": st.column_config.TextColumn("Status",     width=90),
+                             "Event_Type": st.column_config.TextColumn("Event Type", width=160),
+                             "exdt":       st.column_config.DateColumn("Ex-Date"),
+                             "paydt":      st.column_config.DateColumn("Pay Date"),
+                             "evtactioncd":st.column_config.TextColumn("Raw Code",   width=80),
+                         })
 
 with tab2:
     raw_cols = [c for c in RAW_COLUMNS if c in df.columns]
