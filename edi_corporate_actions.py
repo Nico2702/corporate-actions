@@ -288,7 +288,7 @@ def classify_event(row: dict) -> dict:
         return result
 
     # ── DIV + B → Cash & Stock Dividend ──────────────────────────────────────
-    if eventcd == "DIV" and paytypecd == "B":
+    if eventcd == "DIV" and paytypecd == "B" and marker != "SPL":
         result["event_type"] = "Cash + Stock Dividend"
         result["subtype"]    = "Both"
         if gross:
@@ -516,7 +516,15 @@ def merge_events(records_list):
 
         # ── Dividend Election: voting=V, multiple optionids ───────────────────
         votings = [r.get("voting", "") for r in group]
-        if any(v == "V" for v in votings) and len(set(option_ids)) > 1:
+        markers = [r.get("marker", "") for r in group]
+
+        # DIV+SPL with multiple optionids: always Special Dividend — take C leg, drop S/B
+        if "SPL" in markers and len(set(option_ids)) > 1:
+            cash_row = next((r for r in group if r.get("paytypecd") == "C"), group[0])
+            merged.append(dict(cash_row))
+            continue
+
+        if any(v == "V" for v in votings) and len(set(option_ids)) > 1 and "SPL" not in markers:
             cash_row  = next((r for r in group if str(r.get("optionid", "")) == "1"), None)
             stock_row = next((r for r in group if str(r.get("optionid", "")) == "2"), None)
             if not cash_row or not stock_row:
@@ -560,7 +568,7 @@ DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Depositary_Fee","Tax_Relief_Fee","
 def build_rows(processed_records, show_ignored):
     rows = []
     for r in processed_records:
-        is_election       = r.get("_is_election", False)
+        is_election       = r.get("_is_election", False) and r.get("marker", "") != "SPL"
         is_tkovr_election = r.get("_is_tkovr_election", False)
         cl                = classify_event(r)
 
