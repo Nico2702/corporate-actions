@@ -106,6 +106,7 @@ def classify_event(row: dict) -> dict:
     result = {
         "event_type": "Other", "subtype": "",
         "dividend_amount": "", "tax_marker": "", "dividend_currency": "",
+        "depositary_fee": "", "tax_relief_fee": "",
         "stock_dividend_pct": "", "stock_dividend_ratio": "",
         "split_ratio": "", "split_terms": "",
         "subscription_price": "", "subscription_currency": "", "subscription_ratio": "",
@@ -133,6 +134,8 @@ def classify_event(row: dict) -> dict:
     ratioold      = row.get("ratioold")       or ""
     issueprice    = row.get("issueprice")     or ""
     entissueprice = row.get("entissueprice")  or ""
+    depositary_fee  = row.get("depfees")        or ""
+    tax_relief_fee  = row.get("taxrelieffee")   or ""
     is_us = op_mic in US_MICS
     is_au = op_mic == "XASX"
     is_br = op_mic == "BVMF"
@@ -294,6 +297,8 @@ def classify_event(row: dict) -> dict:
         if ratio is not None:
             result["stock_dividend_pct"]   = f"{ratio * 100:.4f}%"
             result["stock_dividend_ratio"] = f"{1 + ratio:.6f}"
+        result["depositary_fee"]  = depositary_fee
+        result["tax_relief_fee"]  = tax_relief_fee
         return result
 
     # ── RCAP ──────────────────────────────────────────────────────────────────
@@ -303,6 +308,8 @@ def classify_event(row: dict) -> dict:
         result["dividend_amount"]   = cashback
         result["tax_marker"]        = "NET"
         result["dividend_currency"] = ratecurencd
+        result["depositary_fee"]  = depositary_fee
+        result["tax_relief_fee"]  = tax_relief_fee
         return result
 
     # ── LIQ / MEM ─────────────────────────────────────────────────────────────
@@ -314,6 +321,8 @@ def classify_event(row: dict) -> dict:
         elif net:
             result["dividend_amount"] = net;   result["tax_marker"] = "GROSS"
         result["dividend_currency"] = ratecurencd
+        result["depositary_fee"]  = depositary_fee
+        result["tax_relief_fee"]  = tax_relief_fee
         return result
 
     # ── DIV / DIVIF / DRIP / FRANK / PID ─────────────────────────────────────
@@ -351,6 +360,8 @@ def classify_event(row: dict) -> dict:
         result["dividend_currency"] = ratecurencd
         if is_br and marker == "ISC":
             result["subtype"] = "Interest on Capital"; result["tax_marker"] = "GROSS (15% WHT)"
+        result["depositary_fee"]  = depositary_fee
+        result["tax_relief_fee"]  = tax_relief_fee
         return result
 
     # ── ANN (Announcement) → route by relatedeventcd ─────────────────────────
@@ -502,7 +513,7 @@ MA_FIELDS = [
     "MA_Merger_Status",
     "MA_Close_Date",
 ]
-DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Dividend_Currency",
+DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
               "Creation_Date"]
@@ -590,6 +601,8 @@ def build_rows(processed_records, show_ignored):
             row["Dividend_Amount"]   = r.get("_opt1_grossdividend") or r.get("_opt1_netdividend") or ""
             row["Tax_Marker"]        = "GROSS"
             row["Dividend_Currency"] = r.get("ratecurencd", "")
+            row["Depositary_Fee"]    = r.get("depfees", "")
+            row["Tax_Relief_Fee"]    = r.get("taxrelieffee", "")
             ratio = safe_div(r.get("_opt2_rationew"), r.get("_opt2_ratioold"))
             row["Stock_Div_Pct"]     = f"{ratio*100:.4f}%" if ratio else ""
             row["Stock_Div_Ratio"]   = f"{1+ratio:.6f}"    if ratio else ""
@@ -601,6 +614,8 @@ def build_rows(processed_records, show_ignored):
             row["Dividend_Amount"]   = cl["dividend_amount"]
             row["Tax_Marker"]        = cl["tax_marker"]
             row["Dividend_Currency"] = cl["dividend_currency"]
+            row["Depositary_Fee"]    = cl["depositary_fee"]
+            row["Tax_Relief_Fee"]    = cl["tax_relief_fee"]
             row["Stock_Div_Pct"]     = cl["stock_dividend_pct"]
             row["Stock_Div_Ratio"]   = cl["stock_dividend_ratio"]
             row["Split_Ratio"]       = cl["split_ratio"]
@@ -791,7 +806,7 @@ with tab1:
     div_display = [
         "Event_Type", "Subtype", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
-        "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
+        "Dividend_Amount", "Tax_Marker", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
         "Default_Option", "optionelectiondt",
@@ -822,6 +837,8 @@ with tab1:
             "paydt":                st.column_config.DateColumn("Pay Date"),
             "recorddt":             st.column_config.DateColumn("Record Date"),
             "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",        format="%.4f"),
+            "Depositary_Fee":       st.column_config.NumberColumn("Dep. Fee",           format="%.4f"),
+            "Tax_Relief_Fee":       st.column_config.NumberColumn("Tax Relief Fee",     format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
             "Split_Terms":          st.column_config.TextColumn("Split Terms",           width=100),
             "MA_Cash_Terms":          st.column_config.NumberColumn("Cash Terms",          format="%.4f"),
@@ -913,6 +930,8 @@ with tab3:
                     "Subtype":           sel.get("Subtype"),
                     "Dividend_Amount":   sel.get("Dividend_Amount"),
                     "Tax_Marker":        sel.get("Tax_Marker"),
+                    "Depositary_Fee":    sel.get("Depositary_Fee"),
+                    "Tax_Relief_Fee":    sel.get("Tax_Relief_Fee"),
                     "Dividend_Currency": sel.get("Dividend_Currency"),
                     "Stock_Div_Pct":     sel.get("Stock_Div_Pct"),
                     "Stock_Div_Ratio":   sel.get("Stock_Div_Ratio"),
@@ -943,7 +962,7 @@ with tab3:
             st.json({col: sel.get(col, "") for col in RAW_COLUMNS})
             st.markdown("**🔧 Derived Fields**")
             derived_cols = ["Event_Type", "Subtype", "Deal_Type",
-                            "Dividend_Amount", "Tax_Marker", "Dividend_Currency",
+                            "Dividend_Amount", "Tax_Marker", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
                             "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
