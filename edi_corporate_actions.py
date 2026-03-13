@@ -337,6 +337,12 @@ def classify_event(row: dict) -> dict:
     if eventcd in {"DIV", "DIVIF", "DRIP", "FRANK", "PID"}:
         if marker == "SPL":
             result["event_type"] = "Special Dividend"
+            if row.get("_spl_election"):
+                result["subtype"] = "Election"
+                ratio = safe_div(rationew, ratioold)
+                if ratio is not None:
+                    result["stock_dividend_pct"]   = f"{ratio * 100:.4f}%"
+                    result["stock_dividend_ratio"] = f"{ratio:.6f}"
         elif marker == "ISC":
             result["event_type"] = "Cash Dividend"; result["subtype"] = "Interest on Capital"
         elif marker == "CGS":
@@ -518,10 +524,12 @@ def merge_events(records_list):
         votings = [r.get("voting", "") for r in group]
         markers = [r.get("marker", "") for r in group]
 
-        # DIV+SPL with multiple optionids: always Special Dividend — take C leg, drop S/B
+        # DIV+SPL with multiple optionids: always Special Dividend — take optionid=1 as default
         if "SPL" in markers and len(set(option_ids)) > 1:
-            cash_row = next((r for r in group if r.get("paytypecd") == "C"), group[0])
-            merged.append(dict(cash_row))
+            default_row = next((r for r in group if str(r.get("optionid", "")) == "1"), group[0])
+            combined = dict(default_row)
+            combined["_spl_election"] = True
+            merged.append(combined)
             continue
 
         if any(v == "V" for v in votings) and len(set(option_ids)) > 1 and "SPL" not in markers:
