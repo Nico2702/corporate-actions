@@ -585,6 +585,13 @@ def merge_events(records_list):
                     None
                 )
             if not chosen:
+                # Any optionid with amount
+                chosen = next(
+                    (r for r in sorted(cash_group, key=lambda x: str(x.get("optionid", "")))
+                     if _has_amount(r)),
+                    None
+                )
+            if not chosen:
                 chosen = next(
                     (r for r in cash_group if r.get("defaultoptionflag") == "T"),
                     cash_group[0] if cash_group else group[0]
