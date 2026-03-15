@@ -776,7 +776,9 @@ def build_rows(processed_records, show_ignored):
                     div_amt  = float(cl["dividend_amount"])
                     if div_amt > 0:
                         adj_wht = wht_au * (1 - (frankdiv / div_amt))
-                        row["Adjusted_WHT"] = f"{adj_wht*100:.2f}%"
+                        adj_pct = adj_wht * 100
+                        decimals = 2 if adj_pct == round(adj_pct, 2) else 6
+                        row["Adjusted_WHT"] = f"{adj_pct:.{decimals}f}%"
                 except (ValueError, TypeError):
                     pass
             row["Dividend_Currency"] = cl["dividend_currency"]
