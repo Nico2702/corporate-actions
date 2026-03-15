@@ -38,6 +38,7 @@ st.markdown("""
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 US_MICS = {"XNAS", "XNYS"}
+AU_MICS = {"XASX"}
 
 EVENT_TYPE_COLORS = {
     "Cash Dividend":          "badge-cash",
@@ -141,7 +142,7 @@ def classify_event(row: dict) -> dict:
     depositary_fee  = row.get("depfees")        or ""
     tax_relief_fee  = row.get("taxrelieffee")   or ""
     is_us = op_mic in US_MICS
-    is_au = op_mic == "XASX"
+    is_au = op_mic in AU_MICS
     is_br = op_mic == "BVMF"
 
     # ── TKOVR ─────────────────────────────────────────────────────────────────
@@ -770,6 +771,17 @@ def build_rows(processed_records, show_ignored):
             row["Adjusted_WHT"]      = cl["adjusted_wht"]
             row["Frankdiv"]          = r.get("_frankdiv", "")
             row["Unfrank_Div"]       = r.get("_unfrankdiv", "")
+            # Adjusted WHT for Australian dividends
+            if r.get("_frankdiv") and cl.get("dividend_amount"):
+                try:
+                    wht_au = 0.30
+                    frankdiv = float(r["_frankdiv"])
+                    div_amt  = float(cl["dividend_amount"])
+                    if div_amt > 0:
+                        adj_wht = wht_au * (1 - (frankdiv / div_amt))
+                        row["Adjusted_WHT"] = f"{adj_wht*100:.2f}%"
+                except (ValueError, TypeError):
+                    pass
             row["Dividend_Currency"] = cl["dividend_currency"]
             row["Depositary_Fee"]    = cl["depositary_fee"]
             row["Tax_Relief_Fee"]    = cl["tax_relief_fee"]
