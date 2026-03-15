@@ -335,6 +335,22 @@ def classify_event(row: dict) -> dict:
         result["tax_relief_fee"]  = tax_relief_fee
         return result
 
+    # ── FRANK standalone (no DIV partner) → Cash Dividend with CFI or frankdiv as amount ──
+    if eventcd == "FRANK" and row.get("_standalone_frank"):
+        result["event_type"] = "Cash Dividend"
+        amount = row.get("conduitfrgnincome") or row.get("frankdiv") or ""
+        if amount:
+            result["dividend_amount"] = amount
+            result["tax_marker"]      = "GROSS"
+        result["dividend_currency"] = ratecurencd
+        if marker == "INT":
+            result["subtype"] = "Interim"
+        elif marker == "FNL":
+            result["subtype"] = "Final"
+        elif marker == "ANL":
+            result["subtype"] = "Annual"
+        return result
+
     # ── DIV / DIVIF / DRIP / PID ─────────────────────────────────────────────
     if eventcd in {"DIV", "DIVIF", "DRIP", "PID"}:
         if marker == "SPL":
@@ -485,16 +501,27 @@ def merge_events(records_list):
     for r in records_list:
         if (r.get("eventcd") or "").upper() == "FRANK":
             key = (r.get("eventid"), r.get("operationalmic"))
-            if r.get("frankdiv"):
+            if r.get("frankdiv") or r.get("conduitfrgnincome"):
                 frank_map[key] = r
 
     for r in records_list:
         if (r.get("eventcd") or "").upper() == "FRANK":
             r["frank_div_raw"]    = r.get("frankdiv") or ""
+            r["cfi_raw"]          = r.get("conduitfrgnincome") or ""
         if (r.get("eventcd") or "").upper() == "DIV":
             key = (r.get("eventid"), r.get("operationalmic"))
             if key in frank_map:
-                r["_frankdiv"]   = frank_map[key].get("frankdiv") or ""
+                r["_frankdiv"] = frank_map[key].get("frankdiv") or ""
+                r["_cfi"]      = frank_map[key].get("conduitfrgnincome") or ""
+
+    # Mark FRANK records that have no corresponding DIV record as standalone
+    div_keys = {(r.get("eventid"), r.get("operationalmic"))
+                for r in records_list if (r.get("eventcd") or "").upper() == "DIV"}
+    for r in records_list:
+        if (r.get("eventcd") or "").upper() == "FRANK":
+            key = (r.get("eventid"), r.get("operationalmic"))
+            if key not in div_keys and (r.get("frankdiv") or r.get("conduitfrgnincome")):
+                r["_standalone_frank"] = True
 
     groups = defaultdict(list)
     for r in records_list:
@@ -652,7 +679,7 @@ MA_FIELDS = [
     "MA_Close_Date",
     "New_Name", "Old_Name", "ID_Change_Date",
 ]
-DIV_FIELDS = ["Dividend_Amount","Frankdiv","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
+DIV_FIELDS = ["Dividend_Amount","Frankdiv","CFI","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
               "Creation_Date"]
@@ -767,7 +794,8 @@ def build_rows(processed_records, show_ignored):
             row["Dividend_Amount"]   = cl["dividend_amount"]
             row["Tax_Marker"]        = cl["tax_marker"]
             row["Adjusted_WHT"]      = cl["adjusted_wht"]
-            row["Frankdiv"]          = r.get("_frankdiv", "")
+            row["Frankdiv"]          = r.get("_frankdiv", "") or r.get("frankdiv", "")
+            row["CFI"]               = r.get("_cfi", "") or r.get("conduitfrgnincome", "")
             # Adjusted WHT for Australian dividends
             if r.get("_frankdiv") and cl.get("dividend_amount"):
                 try:
@@ -1003,7 +1031,7 @@ with tab1:
     div_display = [
         "Event_Type", "Subtype", "Evt_Status", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
-        "Dividend_Amount", "Frankdiv", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+        "Dividend_Amount", "Frankdiv", "CFI", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
         "Default_Option", "optionelectiondt",
@@ -1039,6 +1067,7 @@ with tab1:
             "Depositary_Fee":       st.column_config.NumberColumn("Dep. Fee",           format="%.4f"),
             "Adjusted_WHT":         st.column_config.TextColumn("Adjusted WHT",         width=100),
             "Frankdiv":             st.column_config.TextColumn("Frankdiv",             width=90),
+            "CFI":                  st.column_config.TextColumn("CFI",                  width=90),
             "Tax_Relief_Fee":       st.column_config.NumberColumn("Tax Relief Fee",     format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
             "Split_Terms":          st.column_config.TextColumn("Split Terms",           width=100),
@@ -1154,6 +1183,7 @@ with tab3:
                     "Tax_Marker":        sel.get("Tax_Marker"),
                     "Adjusted_WHT":      sel.get("Adjusted_WHT"),
                     "Frankdiv":          sel.get("Frankdiv"),
+                    "CFI":               sel.get("CFI"),
                     "Depositary_Fee":    sel.get("Depositary_Fee"),
                     "Tax_Relief_Fee":    sel.get("Tax_Relief_Fee"),
                     "Dividend_Currency": sel.get("Dividend_Currency"),
@@ -1186,7 +1216,7 @@ with tab3:
             st.json({col: sel.get(col, "") for col in RAW_COLUMNS})
             st.markdown("**🔧 Derived Fields**")
             derived_cols = ["Event_Type", "Subtype", "Deal_Type",
-                            "Dividend_Amount", "Frankdiv", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+                            "Dividend_Amount", "Frankdiv", "CFI", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
                             "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
