@@ -797,13 +797,14 @@ def build_rows(processed_records, show_ignored):
             row["Frankdiv"]          = r.get("_frankdiv", "") or r.get("frankdiv", "")
             row["CFI"]               = r.get("_cfi", "") or r.get("conduitfrgnincome", "")
             # Adjusted WHT for Australian dividends
-            if r.get("_frankdiv") and cl.get("dividend_amount"):
+            if (r.get("_frankdiv") or r.get("_cfi")) and cl.get("dividend_amount"):
                 try:
-                    wht_au = 0.30
-                    frankdiv = float(r["_frankdiv"])
+                    wht_au   = 0.30
+                    frankdiv = float(r.get("_frankdiv") or 0)
+                    cfi      = float(r.get("_cfi") or 0)
                     div_amt  = float(cl["dividend_amount"])
                     if div_amt > 0:
-                        adj_wht = wht_au * (1 - (frankdiv / div_amt))
+                        adj_wht = wht_au * (1 - (frankdiv + cfi) / div_amt)
                         adj_pct = adj_wht * 100
                         decimals = 2 if adj_pct == round(adj_pct, 2) else 6
                         row["Adjusted_WHT"] = f"{adj_pct:.{decimals}f}%"
