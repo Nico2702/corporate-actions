@@ -107,7 +107,7 @@ def fmt_stock_terms(rationew, ratioold) -> str:
 def classify_event(row: dict) -> dict:
     result = {
         "event_type": "Other", "subtype": "",
-        "dividend_amount": "", "tax_marker": "", "dividend_currency": "",
+        "dividend_amount": "", "tax_marker": "", "adjusted_wht": "", "dividend_currency": "",
         "depositary_fee": "", "tax_relief_fee": "",
         "stock_dividend_pct": "", "stock_dividend_ratio": "",
         "split_ratio": "", "split_terms": "",
@@ -376,7 +376,7 @@ def classify_event(row: dict) -> dict:
 
         result["dividend_currency"] = ratecurencd
         if is_br and marker == "ISC":
-            result["subtype"] = "Interest on Capital"; result["tax_marker"] = "GROSS (15% WHT)"
+            result["subtype"] = "Interest on Capital"; result["tax_marker"] = "GROSS"; result["adjusted_wht"] = "17.5%"
         result["depositary_fee"]  = depositary_fee
         result["tax_relief_fee"]  = tax_relief_fee
         return result
@@ -618,7 +618,7 @@ MA_FIELDS = [
     "MA_Close_Date",
     "New_Name", "Old_Name", "ID_Change_Date",
 ]
-DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
+DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
               "Creation_Date"]
@@ -732,6 +732,7 @@ def build_rows(processed_records, show_ignored):
             row["Subtype"]           = cl["subtype"]
             row["Dividend_Amount"]   = cl["dividend_amount"]
             row["Tax_Marker"]        = cl["tax_marker"]
+            row["Adjusted_WHT"]      = cl["adjusted_wht"]
             row["Dividend_Currency"] = cl["dividend_currency"]
             row["Depositary_Fee"]    = cl["depositary_fee"]
             row["Tax_Relief_Fee"]    = cl["tax_relief_fee"]
@@ -954,7 +955,7 @@ with tab1:
     div_display = [
         "Event_Type", "Subtype", "Evt_Status", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
-        "Dividend_Amount", "Tax_Marker", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+        "Dividend_Amount", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
         "Default_Option", "optionelectiondt",
@@ -988,6 +989,7 @@ with tab1:
             "recorddt":             st.column_config.DateColumn("Record Date"),
             "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",        format="%.4f"),
             "Depositary_Fee":       st.column_config.NumberColumn("Dep. Fee",           format="%.4f"),
+            "Adjusted_WHT":         st.column_config.TextColumn("Adjusted WHT",         width=100),
             "Tax_Relief_Fee":       st.column_config.NumberColumn("Tax Relief Fee",     format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
             "Split_Terms":          st.column_config.TextColumn("Split Terms",           width=100),
@@ -1101,6 +1103,7 @@ with tab3:
                     "Subtype":           sel.get("Subtype"),
                     "Dividend_Amount":   sel.get("Dividend_Amount"),
                     "Tax_Marker":        sel.get("Tax_Marker"),
+                    "Adjusted_WHT":      sel.get("Adjusted_WHT"),
                     "Depositary_Fee":    sel.get("Depositary_Fee"),
                     "Tax_Relief_Fee":    sel.get("Tax_Relief_Fee"),
                     "Dividend_Currency": sel.get("Dividend_Currency"),
@@ -1133,7 +1136,7 @@ with tab3:
             st.json({col: sel.get(col, "") for col in RAW_COLUMNS})
             st.markdown("**🔧 Derived Fields**")
             derived_cols = ["Event_Type", "Subtype", "Deal_Type",
-                            "Dividend_Amount", "Tax_Marker", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+                            "Dividend_Amount", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
                             "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
