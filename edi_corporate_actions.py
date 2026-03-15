@@ -464,11 +464,15 @@ def normalize_dates(records):
 def deduplicate(records):
     raw_df = pd.DataFrame(records)
     raw_df["_ts"] = raw_df["feedgendate"].apply(parse_feedgendate)
+    # Give FRANK priority over DRIP when both have same eventid/optionid/mic/feedgendate
+    raw_df["_eventcd_priority"] = raw_df["eventcd"].apply(
+        lambda x: 0 if str(x).upper() == "FRANK" else (1 if str(x).upper() == "DRIP" else 2)
+    )
     raw_df = (
         raw_df
-        .sort_values("_ts", ascending=False)
+        .sort_values(["_ts", "_eventcd_priority"], ascending=[False, True])
         .drop_duplicates(subset=["eventid", "optionid", "operationalmic"], keep="first")
-        .drop(columns=["_ts"])
+        .drop(columns=["_ts", "_eventcd_priority"])
     )
     return raw_df.to_dict(orient="records")
 
