@@ -63,7 +63,7 @@ RAW_COLUMNS = [
     "exdt", "paydt", "recorddt", "declarationdt", "effectivedt",
     "expcompletiondt",
     "grossdividend", "netdividend", "divrate", "cashback",
-    "frank_div_raw", "unfranked_div_raw",
+    "frank_div_raw",
     "ratioold", "rationew", "ratecurencd",
     "issueprice", "entissueprice", "depfees",
     "outsectycd", "operationalmic", "isin", "issuername",
@@ -485,18 +485,16 @@ def merge_events(records_list):
     for r in records_list:
         if (r.get("eventcd") or "").upper() == "FRANK":
             key = (r.get("eventid"), r.get("operationalmic"))
-            if r.get("frankdiv") or r.get("unfrankeddividendamount"):
+            if r.get("frankdiv"):
                 frank_map[key] = r
 
     for r in records_list:
         if (r.get("eventcd") or "").upper() == "FRANK":
             r["frank_div_raw"]    = r.get("frankdiv") or ""
-            r["unfranked_div_raw"] = r.get("unfrankeddividendamount") or ""
         if (r.get("eventcd") or "").upper() == "DIV":
             key = (r.get("eventid"), r.get("operationalmic"))
             if key in frank_map:
                 r["_frankdiv"]   = frank_map[key].get("frankdiv") or ""
-                r["_unfrankdiv"] = frank_map[key].get("unfrankeddividendamount") or ""
 
     groups = defaultdict(list)
     for r in records_list:
@@ -654,7 +652,7 @@ MA_FIELDS = [
     "MA_Close_Date",
     "New_Name", "Old_Name", "ID_Change_Date",
 ]
-DIV_FIELDS = ["Dividend_Amount","Frankdiv","Unfrank_Div","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
+DIV_FIELDS = ["Dividend_Amount","Frankdiv","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
               "Creation_Date"]
@@ -770,7 +768,6 @@ def build_rows(processed_records, show_ignored):
             row["Tax_Marker"]        = cl["tax_marker"]
             row["Adjusted_WHT"]      = cl["adjusted_wht"]
             row["Frankdiv"]          = r.get("_frankdiv", "")
-            row["Unfrank_Div"]       = r.get("_unfrankdiv", "")
             # Adjusted WHT for Australian dividends
             if r.get("_frankdiv") and cl.get("dividend_amount"):
                 try:
@@ -1004,7 +1001,7 @@ with tab1:
     div_display = [
         "Event_Type", "Subtype", "Evt_Status", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
-        "Dividend_Amount", "Frankdiv", "Unfrank_Div", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+        "Dividend_Amount", "Frankdiv", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
         "Default_Option", "optionelectiondt",
@@ -1040,7 +1037,6 @@ with tab1:
             "Depositary_Fee":       st.column_config.NumberColumn("Dep. Fee",           format="%.4f"),
             "Adjusted_WHT":         st.column_config.TextColumn("Adjusted WHT",         width=100),
             "Frankdiv":             st.column_config.TextColumn("Frankdiv",             width=90),
-            "Unfrank_Div":          st.column_config.TextColumn("Unfrank Div",          width=90),
             "Tax_Relief_Fee":       st.column_config.NumberColumn("Tax Relief Fee",     format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
             "Split_Terms":          st.column_config.TextColumn("Split Terms",           width=100),
@@ -1155,6 +1151,7 @@ with tab3:
                     "Dividend_Amount":   sel.get("Dividend_Amount"),
                     "Tax_Marker":        sel.get("Tax_Marker"),
                     "Adjusted_WHT":      sel.get("Adjusted_WHT"),
+                    "Frankdiv":          sel.get("Frankdiv"),
                     "Depositary_Fee":    sel.get("Depositary_Fee"),
                     "Tax_Relief_Fee":    sel.get("Tax_Relief_Fee"),
                     "Dividend_Currency": sel.get("Dividend_Currency"),
@@ -1187,7 +1184,7 @@ with tab3:
             st.json({col: sel.get(col, "") for col in RAW_COLUMNS})
             st.markdown("**🔧 Derived Fields**")
             derived_cols = ["Event_Type", "Subtype", "Deal_Type",
-                            "Dividend_Amount", "Frankdiv", "Unfrank_Div", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+                            "Dividend_Amount", "Frankdiv", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
                             "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
