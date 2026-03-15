@@ -474,6 +474,21 @@ def deduplicate(records):
 
 # ── Step 2: Merge ─────────────────────────────────────────────────────────────
 def merge_events(records_list):
+    # Pre-pass: transfer frankdiv/unfrankdiv from FRANK records onto DIV records (same eventid+mic)
+    frank_map = {}
+    for r in records_list:
+        if (r.get("eventcd") or "").upper() == "FRANK":
+            key = (r.get("eventid"), r.get("operationalmic"))
+            if r.get("frankdiv") or r.get("unfrankeddividendamount"):
+                frank_map[key] = r
+
+    for r in records_list:
+        if (r.get("eventcd") or "").upper() == "DIV":
+            key = (r.get("eventid"), r.get("operationalmic"))
+            if key in frank_map:
+                r["_frankdiv"]   = frank_map[key].get("frankdiv") or ""
+                r["_unfrankdiv"] = frank_map[key].get("unfrankeddividendamount") or ""
+
     groups = defaultdict(list)
     for r in records_list:
         key = (r.get("eventid", ""), r.get("operationalmic", ""))
@@ -618,7 +633,7 @@ MA_FIELDS = [
     "MA_Close_Date",
     "New_Name", "Old_Name", "ID_Change_Date",
 ]
-DIV_FIELDS = ["Dividend_Amount","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
+DIV_FIELDS = ["Dividend_Amount","Frankdiv","Unfrank_Div","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
               "Creation_Date"]
@@ -733,6 +748,8 @@ def build_rows(processed_records, show_ignored):
             row["Dividend_Amount"]   = cl["dividend_amount"]
             row["Tax_Marker"]        = cl["tax_marker"]
             row["Adjusted_WHT"]      = cl["adjusted_wht"]
+            row["Frankdiv"]          = r.get("_frankdiv", "")
+            row["Unfrank_Div"]       = r.get("_unfrankdiv", "")
             row["Dividend_Currency"] = cl["dividend_currency"]
             row["Depositary_Fee"]    = cl["depositary_fee"]
             row["Tax_Relief_Fee"]    = cl["tax_relief_fee"]
@@ -955,7 +972,7 @@ with tab1:
     div_display = [
         "Event_Type", "Subtype", "Evt_Status", "eventcd", "marker", "paytypecd",
         "exdt", "paydt", "recorddt",
-        "Dividend_Amount", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+        "Dividend_Amount", "Frankdiv", "Unfrank_Div", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
         "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
         "Sub_Price", "Sub_Currency", "Sub_Ratio",
         "Default_Option", "optionelectiondt",
@@ -990,6 +1007,8 @@ with tab1:
             "Dividend_Amount":      st.column_config.NumberColumn("Div Amount",        format="%.4f"),
             "Depositary_Fee":       st.column_config.NumberColumn("Dep. Fee",           format="%.4f"),
             "Adjusted_WHT":         st.column_config.TextColumn("Adjusted WHT",         width=100),
+            "Frankdiv":             st.column_config.NumberColumn("Frankdiv",             format="%.4f"),
+            "Unfrank_Div":          st.column_config.NumberColumn("Unfrank Div",          format="%.4f"),
             "Tax_Relief_Fee":       st.column_config.NumberColumn("Tax Relief Fee",     format="%.4f"),
             "Sub_Price":            st.column_config.NumberColumn("Sub Price",          format="%.4f"),
             "Split_Terms":          st.column_config.TextColumn("Split Terms",           width=100),
@@ -1136,7 +1155,7 @@ with tab3:
             st.json({col: sel.get(col, "") for col in RAW_COLUMNS})
             st.markdown("**🔧 Derived Fields**")
             derived_cols = ["Event_Type", "Subtype", "Deal_Type",
-                            "Dividend_Amount", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
+                            "Dividend_Amount", "Frankdiv", "Unfrank_Div", "Tax_Marker", "Adjusted_WHT", "Depositary_Fee", "Tax_Relief_Fee", "Dividend_Currency",
                             "Stock_Div_Pct", "Stock_Div_Ratio", "Split_Ratio", "Split_Terms",
                             "Sub_Price", "Sub_Currency", "Sub_Ratio", "Default_Option",
                             "MA_Offeror", "MA_Hostile", "MA_Mand_Vol", "MA_Event_Subtype",
