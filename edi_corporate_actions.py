@@ -797,11 +797,13 @@ def build_rows(processed_records, show_ignored):
             row["Frankdiv"]          = r.get("_frankdiv", "") or r.get("frankdiv", "")
             row["CFI"]               = r.get("_cfi", "") or r.get("conduitfrgnincome", "")
             # Adjusted WHT for Australian dividends
-            if (r.get("_frankdiv") or r.get("_cfi")) and cl.get("dividend_amount"):
+            _frankdiv_val = r.get("_frankdiv") or r.get("frankdiv") or ""
+            _cfi_val      = r.get("_cfi") or r.get("conduitfrgnincome") or ""
+            if (_frankdiv_val or _cfi_val) and cl.get("dividend_amount"):
                 try:
                     wht_au   = 0.30
-                    frankdiv = float(r.get("_frankdiv") or 0)
-                    cfi      = float(r.get("_cfi") or 0)
+                    frankdiv = float(_frankdiv_val or 0)
+                    cfi      = float(_cfi_val or 0)
                     div_amt  = float(cl["dividend_amount"])
                     if div_amt > 0:
                         adj_wht = wht_au * (1 - (frankdiv + cfi) / div_amt)
