@@ -334,8 +334,8 @@ def classify_event(row: dict) -> dict:
         result["tax_relief_fee"]  = tax_relief_fee
         return result
 
-    # ── DIV / DIVIF / DRIP / FRANK / PID ─────────────────────────────────────
-    if eventcd in {"DIV", "DIVIF", "DRIP", "FRANK", "PID"}:
+    # ── DIV / DIVIF / DRIP / PID ─────────────────────────────────────────────
+    if eventcd in {"DIV", "DIVIF", "DRIP", "PID"}:
         if marker == "SPL":
             result["event_type"] = "Special Dividend"
             if row.get("_spl_election"):
