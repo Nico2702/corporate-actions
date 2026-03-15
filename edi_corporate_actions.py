@@ -62,6 +62,7 @@ RAW_COLUMNS = [
     "exdt", "paydt", "recorddt", "declarationdt", "effectivedt",
     "expcompletiondt",
     "grossdividend", "netdividend", "divrate", "cashback",
+    "frankdiv", "unfrankeddividendamount",
     "ratioold", "rationew", "ratecurencd",
     "issueprice", "entissueprice", "depfees",
     "outsectycd", "operationalmic", "isin", "issuername",
@@ -501,13 +502,22 @@ def merge_events(records_list):
             continue
 
         eventcd    = (group[0].get("eventcd") or "").upper().strip()
+
+        # Filter out DRIP records — administrative only, never display
+        group = [r for r in group if (r.get("eventcd") or "").upper() != "DRIP"]
+        if not group:
+            continue
         option_ids = [r.get("optionid", "") for r in group]
 
         # If multiple records but only because of empty optionid alongside real ones → take non-empty
         real_ids = [oid for oid in option_ids if str(oid).strip()]
         if len(set(real_ids)) <= 1:
-            chosen = next((r for r in group if str(r.get("optionid","")).strip()), group[0])
+            # Keep FRANK records separate — they carry frankdiv data
+            frank_recs = [r for r in group if (r.get("eventcd") or "").upper() == "FRANK"]
+            div_recs   = [r for r in group if (r.get("eventcd") or "").upper() != "FRANK"]
+            chosen = next((r for r in div_recs if str(r.get("optionid","")).strip()), div_recs[0] if div_recs else group[0])
             merged.append(chosen)
+            merged.extend(frank_recs)
             continue
 
         # ── TKOVR: multiple optionids → merge all options ─────────────────────
