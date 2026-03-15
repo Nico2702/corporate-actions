@@ -62,8 +62,7 @@ RAW_COLUMNS = [
     "exdt", "paydt", "recorddt", "declarationdt", "effectivedt",
     "expcompletiondt",
     "grossdividend", "netdividend", "divrate", "cashback",
-    "frankdiv", "unfrankeddividendamount",
-    "frankdiv", "unfrankeddividendamount",
+    "frank_div_raw", "unfranked_div_raw",
     "ratioold", "rationew", "ratecurencd",
     "issueprice", "entissueprice", "depfees",
     "outsectycd", "operationalmic", "isin", "issuername",
@@ -485,6 +484,9 @@ def merge_events(records_list):
                 frank_map[key] = r
 
     for r in records_list:
+        if (r.get("eventcd") or "").upper() == "FRANK":
+            r["frank_div_raw"]    = r.get("frankdiv") or ""
+            r["unfranked_div_raw"] = r.get("unfrankeddividendamount") or ""
         if (r.get("eventcd") or "").upper() == "DIV":
             key = (r.get("eventid"), r.get("operationalmic"))
             if key in frank_map:
