@@ -63,6 +63,7 @@ RAW_COLUMNS = [
     "exdt", "paydt", "recorddt", "declarationdt", "effectivedt",
     "expcompletiondt",
     "grossdividend", "netdividend", "divrate", "cashback",
+    "declgrossamt", "declcurencd",
     "frank_div_raw",
     "ratioold", "rationew", "ratecurencd",
     "issueprice", "entissueprice", "depfees",
@@ -131,10 +132,10 @@ def classify_event(row: dict) -> dict:
     paytypecd  = (row.get("paytypecd")      or "").upper().strip()
     outsectycd = (row.get("outsectycd")     or "").upper().strip()
     op_mic     = (row.get("operationalmic") or "").upper().strip()
-    gross         = row.get("grossdividend")  or ""
+    gross         = row.get("grossdividend")  or row.get("declgrossamt") or ""
     net           = row.get("netdividend")    or ""
     cashback      = row.get("cashback")       or ""
-    ratecurencd   = row.get("ratecurencd")    or ""
+    ratecurencd   = row.get("ratecurencd")    or row.get("declcurencd") or ""
     rationew      = row.get("rationew")       or ""
     ratioold      = row.get("ratioold")       or ""
     issueprice    = row.get("issueprice")     or ""
