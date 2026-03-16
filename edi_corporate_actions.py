@@ -75,6 +75,10 @@ RAW_COLUMNS = [
     "eventcreatedt", "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
     "voting", "defaultoptionflag", "optionelectiondt",
     "closedt",
+    "issnewname", "issoldname", "namechangedt",
+    "newlocalcode", "oldlocalcode", "newexchgcd", "oldexchgcd",
+    "newcntrycd", "oldcntrycd", "newisin", "oldisin",
+    "newcurencd", "oldcurencd", "newtradingcurencd", "oldtradingcurencd",
 ]
 
 
@@ -124,6 +128,12 @@ def classify_event(row: dict) -> dict:
         "ma_effective_date": "", "ma_exp_completion": "",
         "ma_merger_status": "", "ma_event_subtype": "",
         "new_name": "", "old_name": "", "id_change_dt": "",
+        "new_local_code": "", "old_local_code": "",
+        "new_exchg": "", "old_exchg": "",
+        "new_country": "", "old_country": "",
+        "new_isin": "", "old_isin": "",
+        "new_currency": "", "old_currency": "",
+        "new_trading_ccy": "", "old_trading_ccy": "",
         "ignore": False,
     }
 
@@ -457,9 +467,21 @@ def classify_event(row: dict) -> dict:
             result["subtype"] = "Data Clean"
         else:
             result["subtype"] = related or ""
-        result["new_name"] = row.get("issnewname") or ""
-        result["old_name"] = row.get("issoldname") or ""
-        result["id_change_dt"] = row.get("namechangedt") or row.get("effectivedt") or ""
+        result["new_name"]       = row.get("issnewname")       or ""
+        result["old_name"]       = row.get("issoldname")       or ""
+        result["id_change_dt"]   = row.get("namechangedt") or row.get("effectivedt") or ""
+        result["new_local_code"] = row.get("newlocalcode")     or ""
+        result["old_local_code"] = row.get("oldlocalcode")     or ""
+        result["new_exchg"]      = row.get("newexchgcd")       or ""
+        result["old_exchg"]      = row.get("oldexchgcd")       or ""
+        result["new_country"]    = row.get("newcntrycd")       or ""
+        result["old_country"]    = row.get("oldcntrycd")       or ""
+        result["new_isin"]       = row.get("newisin")          or ""
+        result["old_isin"]       = row.get("oldisin")          or ""
+        result["new_currency"]   = row.get("newcurencd")       or ""
+        result["old_currency"]   = row.get("oldcurencd")       or ""
+        result["new_trading_ccy"]= row.get("newtradingcurencd") or ""
+        result["old_trading_ccy"]= row.get("oldtradingcurencd") or ""
         return result
 
     return result
@@ -679,6 +701,12 @@ MA_FIELDS = [
     "MA_Merger_Status",
     "MA_Close_Date",
     "New_Name", "Old_Name", "ID_Change_Date",
+    "New_Local_Code", "Old_Local_Code",
+    "New_Exchg", "Old_Exchg",
+    "New_Country", "Old_Country",
+    "New_ISIN", "Old_ISIN",
+    "New_Currency", "Old_Currency",
+    "New_Trading_CCY", "Old_Trading_CCY",
 ]
 DIV_FIELDS = ["Dividend_Amount","Frankdiv","CFI","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
@@ -785,9 +813,21 @@ def build_rows(processed_records, show_ignored):
         elif cl["event_type"] == "ID Change":
             row["Event_Type"]     = "ID Change"
             row["Subtype"]        = cl["subtype"]
-            row["New_Name"]       = cl["new_name"]
-            row["Old_Name"]       = cl["old_name"]
-            row["ID_Change_Date"] = cl["id_change_dt"]
+            row["New_Name"]        = cl["new_name"]
+            row["Old_Name"]        = cl["old_name"]
+            row["ID_Change_Date"]  = cl["id_change_dt"]
+            row["New_Local_Code"]  = cl["new_local_code"]
+            row["Old_Local_Code"]  = cl["old_local_code"]
+            row["New_Exchg"]       = cl["new_exchg"]
+            row["Old_Exchg"]       = cl["old_exchg"]
+            row["New_Country"]     = cl["new_country"]
+            row["Old_Country"]     = cl["old_country"]
+            row["New_ISIN"]        = cl["new_isin"]
+            row["Old_ISIN"]        = cl["old_isin"]
+            row["New_Currency"]    = cl["new_currency"]
+            row["Old_Currency"]    = cl["old_currency"]
+            row["New_Trading_CCY"] = cl["new_trading_ccy"]
+            row["Old_Trading_CCY"] = cl["old_trading_ccy"]
 
         else:
             row["Event_Type"]        = cl["event_type"]
@@ -1095,6 +1135,18 @@ with tab1:
             "New_Name":             st.column_config.TextColumn("New Name",             width=200),
             "Old_Name":             st.column_config.TextColumn("Old Name",             width=200),
             "ID_Change_Date":       st.column_config.TextColumn("Change Date",          width=120),
+            "New_Local_Code":       st.column_config.TextColumn("New Ticker",           width=100),
+            "Old_Local_Code":       st.column_config.TextColumn("Old Ticker",           width=100),
+            "New_Exchg":            st.column_config.TextColumn("New Exchange",         width=100),
+            "Old_Exchg":            st.column_config.TextColumn("Old Exchange",         width=100),
+            "New_Country":          st.column_config.TextColumn("New Country",          width=90),
+            "Old_Country":          st.column_config.TextColumn("Old Country",          width=90),
+            "New_ISIN":             st.column_config.TextColumn("New ISIN",             width=130),
+            "Old_ISIN":             st.column_config.TextColumn("Old ISIN",             width=130),
+            "New_Currency":         st.column_config.TextColumn("New Currency",         width=90),
+            "Old_Currency":         st.column_config.TextColumn("Old Currency",         width=90),
+            "New_Trading_CCY":      st.column_config.TextColumn("New Trading CCY",      width=110),
+            "Old_Trading_CCY":      st.column_config.TextColumn("Old Trading CCY",      width=110),
             "Creation_Date":        st.column_config.TextColumn("Creation Date",        width=130),
             "feedgendate":          st.column_config.TextColumn("Feed Gen Date",         width=130),
             "evtactioncd":          st.column_config.TextColumn("Evt Action",            width=80),
@@ -1177,6 +1229,18 @@ with tab3:
                     "New_Name":            sel.get("New_Name"),
                     "Old_Name":            sel.get("Old_Name"),
                     "ID_Change_Date":      sel.get("ID_Change_Date"),
+                    "New_Local_Code":      sel.get("New_Local_Code"),
+                    "Old_Local_Code":      sel.get("Old_Local_Code"),
+                    "New_Exchg":           sel.get("New_Exchg"),
+                    "Old_Exchg":           sel.get("Old_Exchg"),
+                    "New_Country":         sel.get("New_Country"),
+                    "Old_Country":         sel.get("Old_Country"),
+                    "New_ISIN":            sel.get("New_ISIN"),
+                    "Old_ISIN":            sel.get("Old_ISIN"),
+                    "New_Currency":        sel.get("New_Currency"),
+                    "Old_Currency":        sel.get("Old_Currency"),
+                    "New_Trading_CCY":     sel.get("New_Trading_CCY"),
+                    "Old_Trading_CCY":     sel.get("Old_Trading_CCY"),
                 })
                 st.json({k: v for k, v in detail.items() if v not in (None, "")})
             else:
@@ -1230,6 +1294,12 @@ with tab3:
                             "MA_Effective_Date", "MA_Exp_Completion",
                             "MA_Merger_Status", "MA_Close_Date",
                             "New_Name", "Old_Name", "ID_Change_Date",
+                            "New_Local_Code", "Old_Local_Code",
+                            "New_Exchg", "Old_Exchg",
+                            "New_Country", "Old_Country",
+                            "New_ISIN", "Old_ISIN",
+                            "New_Currency", "Old_Currency",
+                            "New_Trading_CCY", "Old_Trading_CCY",
                             "Creation_Date"]
             st.json({col: sel.get(col, "") for col in derived_cols})
 
