@@ -484,6 +484,15 @@ def classify_event(row: dict) -> dict:
         result["old_trading_ccy"]= row.get("oldtradingcurencd") or ""
         return result
 
+    # ── ICC (ISIN Change) ─────────────────────────────────────────────────────
+    if eventcd == "ICC":
+        result["event_type"]   = "ID Change"
+        result["subtype"]      = "ISIN Change"
+        result["id_change_dt"] = row.get("effectivedt") or ""
+        result["new_isin"]     = row.get("newisin")  or ""
+        result["old_isin"]     = row.get("oldisin")  or ""
+        return result
+
     # ── LCC (Listing Code Change — Ticker Change) ─────────────────────────────
     if eventcd == "LCC":
         result["event_type"]     = "ID Change"
