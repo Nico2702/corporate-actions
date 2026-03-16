@@ -1108,6 +1108,12 @@ with tab1:
         "MA_Merger_Status",
         "MA_Close_Date",
         "New_Name", "Old_Name", "ID_Change_Date",
+        "New_Local_Code", "Old_Local_Code",
+        "New_Exchg", "Old_Exchg",
+        "New_Country", "Old_Country",
+        "New_ISIN", "Old_ISIN",
+        "New_Currency", "Old_Currency",
+        "New_Trading_CCY", "Old_Trading_CCY",
     ]
     meta_display = [
         "Creation_Date",
