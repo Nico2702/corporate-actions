@@ -1267,6 +1267,7 @@ with tab3:
             st.markdown("**🏷️ Classification**")
             evt = str(sel.get("Event_Type", ""))
             is_deal = evt in ("Merger & Acquisition", "Spin-Off", "Stock Distribution")
+            is_id_change = evt == "ID Change"
 
             if is_deal:
                 detail = {
@@ -1313,6 +1314,26 @@ with tab3:
                     "Old_Trading_CCY":     sel.get("Old_Trading_CCY"),
                 })
                 st.json({k: v for k, v in detail.items() if v not in (None, "")})
+            elif is_id_change:
+                st.json({k: v for k, v in {
+                    "Event_Type":      sel.get("Event_Type"),
+                    "Subtype":         sel.get("Subtype"),
+                    "ID_Change_Date":  sel.get("ID_Change_Date"),
+                    "New_Name":        sel.get("New_Name"),
+                    "Old_Name":        sel.get("Old_Name"),
+                    "New_ISIN":        sel.get("New_ISIN"),
+                    "Old_ISIN":        sel.get("Old_ISIN"),
+                    "New_Local_Code":  sel.get("New_Local_Code"),
+                    "Old_Local_Code":  sel.get("Old_Local_Code"),
+                    "New_Exchg":       sel.get("New_Exchg"),
+                    "Old_Exchg":       sel.get("Old_Exchg"),
+                    "New_Country":     sel.get("New_Country"),
+                    "Old_Country":     sel.get("Old_Country"),
+                    "New_Currency":    sel.get("New_Currency"),
+                    "Old_Currency":    sel.get("Old_Currency"),
+                    "New_Trading_CCY": sel.get("New_Trading_CCY"),
+                    "Old_Trading_CCY": sel.get("Old_Trading_CCY"),
+                }.items() if v not in (None, "")})
             else:
                 st.json({k: v for k, v in {
                     "Event_Type":        sel.get("Event_Type"),
