@@ -141,6 +141,11 @@ def classify_event(row: dict) -> dict:
     paytypecd  = (row.get("paytypecd")      or "").upper().strip()
     outsectycd = (row.get("outsectycd")     or "").upper().strip()
     op_mic     = (row.get("operationalmic") or "").upper().strip()
+
+    # ── Global filter: Warrant (WAR) → always ignore ──────────────────────────
+    if outsectycd == "WAR":
+        result["ignore"] = True
+        return result
     gross         = row.get("grossdividend")  or row.get("declgrossamt") or ""
     net           = row.get("netdividend")    or ""
     cashback      = row.get("cashback")       or ""
@@ -272,9 +277,6 @@ def classify_event(row: dict) -> dict:
 
     # ── US: DIV/BON + S → Stock Split ────────────────────────────────────────
     if is_us and eventcd in {"DIV", "BON"} and paytypecd == "S":
-        if outsectycd == "WAR":
-            result["ignore"] = True
-            return result
         result["event_type"] = "Stock Split"
         result["subtype"]    = "Forward Stock Split"
         try:
@@ -287,9 +289,6 @@ def classify_event(row: dict) -> dict:
 
     # ── non-US: DIV/BON + S → Stock Dividend ─────────────────────────────────
     if not is_us and eventcd in {"DIV", "BON"} and paytypecd == "S":
-        if outsectycd == "WAR":
-            result["ignore"] = True
-            return result
         result["event_type"] = "Stock Dividend"
         result["subtype"]    = "Bonus Issue" if eventcd == "BON" else ""
         ratio = safe_div(rationew, ratioold)
