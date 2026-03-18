@@ -360,8 +360,8 @@ def classify_event(row: dict) -> dict:
             result["subtype"] = "Annual"
         return result
 
-    # ── DIV / DIVIF / DRIP / PID ─────────────────────────────────────────────
-    if eventcd in {"DIV", "DIVIF", "DRIP", "PID"}:
+    # ── DIV / DIVIF / PID ────────────────────────────────────────────────────
+    if eventcd in {"DIV", "DIVIF", "PID"}:
         if marker == "SPL":
             result["event_type"] = "Special Dividend"
         elif marker == "MEM":
@@ -475,6 +475,18 @@ def classify_event(row: dict) -> dict:
         result["new_trading_ccy"]= row.get("newtradingcurencd") or ""
         result["old_trading_ccy"]= row.get("oldtradingcurencd") or ""
         return result
+
+    # ── SDCHG (Security Description Change — Currency Change) ────────────────
+    if eventcd == "SDCHG":
+        if row.get("newtradingcurencd") or row.get("oldtradingcurencd"):
+            result["event_type"]     = "ID Change"
+            result["subtype"]        = "Currency Change"
+            result["id_change_dt"]   = row.get("effectivedt") or ""
+            result["new_trading_ccy"]= row.get("newtradingcurencd") or ""
+            result["old_trading_ccy"]= row.get("oldtradingcurencd") or ""
+            result["new_currency"]   = row.get("newcurencd") or ""
+            result["old_currency"]   = row.get("oldcurencd") or ""
+            return result
 
     # ── ICC (ISIN Change) ─────────────────────────────────────────────────────
     if eventcd == "ICC":
