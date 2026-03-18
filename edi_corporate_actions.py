@@ -123,7 +123,6 @@ def classify_event(row: dict) -> dict:
         "ma_subtype": "", "ma_deal_type": "", "ma_offeror": "", "ma_hostile": "",
         "ma_cash_terms": "", "ma_cash_terms_currency": "",
         "eca_stock_ratio": "", "eca_stock_terms": "", "ma_offeror_isin": "", "ma_offeror_ticker": "",
-        "ma_cash_terms": "", "ma_cash_terms_currency": "",
         "ma_mandatory_voluntary": "",
         "ma_effective_date": "", "ma_exp_completion": "",
         "ma_merger_status": "", "ma_event_subtype": "",
@@ -176,12 +175,11 @@ def classify_event(row: dict) -> dict:
             result["eca_stock_ratio"]    = f"{ratio:.6f}" if ratio else ""
             result["eca_stock_terms"]    = fmt_stock_terms(rationew, ratioold) if ratio else ""
         elif paytypecd == "B":
-            result["ma_deal_type"]         = "Cash & Stock"
-            result["ma_cash_terms"]        = row.get("minimumprice") or row.get("maximumprice") or ""
-            result["ma_cash_terms_currency"]    = row.get("ratecurencd") or row.get("tradingcurencd") or ""
-            result["ma_cash_terms_currency"]     = row.get("ratecurencd") or row.get("tradingcurencd") or ""
-            result["ma_offeror_isin"]      = row.get("outisin")         or ""
-            result["ma_offeror_ticker"]    = row.get("outbbgcompticker") or ""
+            result["ma_deal_type"]           = "Cash & Stock"
+            result["ma_cash_terms"]          = row.get("minimumprice") or row.get("maximumprice") or ""
+            result["ma_cash_terms_currency"] = row.get("ratecurencd") or row.get("tradingcurencd") or ""
+            result["ma_offeror_isin"]        = row.get("outisin")         or ""
+            result["ma_offeror_ticker"]      = row.get("outbbgcompticker") or ""
             ratio = safe_div(rationew, ratioold)
             result["eca_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
             result["eca_stock_terms"] = fmt_stock_terms(rationew, ratioold) if ratio else ""
@@ -366,12 +364,6 @@ def classify_event(row: dict) -> dict:
     if eventcd in {"DIV", "DIVIF", "DRIP", "PID"}:
         if marker == "SPL":
             result["event_type"] = "Special Dividend"
-            if row.get("_spl_election"):
-                result["subtype"] = "Election"
-                ratio = safe_div(rationew, ratioold)
-                if ratio is not None:
-                    result["stock_dividend_pct"]   = f"{ratio * 100:.4f}%"
-                    result["stock_dividend_ratio"] = f"{ratio:.6f}"
         elif marker == "MEM":
             result["event_type"] = "Special Dividend"
             result["subtype"]    = "Memorial"
@@ -519,7 +511,8 @@ def normalize_dates(records):
     """Normalize date fields: replace slashes with dashes (e.g. 2026/04/01 → 2026-04-01)."""
     date_fields = ["exdt", "paydt", "recorddt", "declarationdt", "effectivedt",
                    "expcompletiondt", "closedt", "unconditionaldt", "compulsoryacqdt",
-                   "optionelectiondt", "ntschangedt", "periodenddt", "eventcreatedt", "feedgendate"]
+                   "optionelectiondt", "ntschangedt", "periodenddt", "eventcreatedt",
+                   "feedgendate", "namechangedt"]
     for r in records:
         for f in date_fields:
             v = r.get(f)
@@ -826,13 +819,11 @@ def build_rows(processed_records, show_ignored):
             row["MA_Hostile"]        = cl["ma_hostile"]
             row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
             row["MA_Event_Subtype"]  = cl["ma_event_subtype"]
-            row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
-            row["MA_Cash_Terms_Currency"]  = cl["ma_cash_terms_currency"]
-            row["ECA_Stock_Ratio"]    = cl["eca_stock_ratio"]
-            row["ECA_Stock_Terms"]    = cl["eca_stock_terms"]
-            row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
+            row["MA_Cash_Terms"]          = cl["ma_cash_terms"]
             row["MA_Cash_Terms_Currency"] = cl["ma_cash_terms_currency"]
-            row["MA_Offeror_ISIN"]   = cl["ma_offeror_isin"]
+            row["ECA_Stock_Ratio"]        = cl["eca_stock_ratio"]
+            row["ECA_Stock_Terms"]        = cl["eca_stock_terms"]
+            row["MA_Offeror_ISIN"]        = cl["ma_offeror_isin"]
             row["MA_Offeror_Ticker"] = cl["ma_offeror_ticker"]
             row["MA_Effective_Date"] = cl["ma_effective_date"]
             row["MA_Exp_Completion"] = cl["ma_exp_completion"]
