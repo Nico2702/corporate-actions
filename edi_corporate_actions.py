@@ -777,7 +777,7 @@ def build_rows(processed_records, show_ignored):
             label_map = {"C": "Cash", "S": "Stock", "B": "Cash & Stock"}
             deal_type_label = " + ".join(label_map.get(p, p) for p in paytypes)
             row["Event_Type"]        = "Merger & Acquisition"
-            row["Subtype"]           = "Election"
+            row["Subtype"]           = "Election" if len(paytypes) >= 2 else ""
             row["Deal_Type"]         = deal_type_label
             row["MA_Offeror"]        = r.get("offerorname", "")
             row["MA_Hostile"]        = r.get("hostile", "")
