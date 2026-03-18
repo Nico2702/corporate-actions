@@ -730,6 +730,7 @@ MA_FIELDS = [
     "MA_Effective_Date", "MA_Exp_Completion",
     "MA_Merger_Status",
     "MA_Close_Date",
+    "ECA_Status",
     "New_Name", "Old_Name", "ID_Change_Date",
     "New_Local_Code", "Old_Local_Code",
     "New_Exchg", "Old_Exchg",
@@ -742,6 +743,31 @@ DIV_FIELDS = ["Dividend_Amount","Frankdiv","CFI","Tax_Marker","Adjusted_WHT","De
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
               "Creation_Date"]
+
+def derive_eca_status(r, eventcd):
+    """Derive ECA_Status for M&A and Spin-Off events."""
+    from datetime import datetime
+    today = datetime.today().date()
+
+    def is_past(d):
+        try: return datetime.strptime(str(d)[:10], "%Y-%m-%d").date() < today
+        except: return False
+
+    subtypecd  = (r.get("eventsubtypecd") or "").upper()
+    closedt    = r.get("closedt") or r.get("_ma_close_date") or ""
+    effectivedt= r.get("effectivedt") or ""
+    exdt       = r.get("exdt") or ""
+
+    if subtypecd in ("MRGR", "TENDMRGR"):
+        return "Completed"
+    if closedt and is_past(closedt):
+        return "Completed"
+    if effectivedt and is_past(effectivedt):
+        return "Completed"
+    if eventcd == "DMRGR" and exdt and is_past(exdt):
+        return "Completed"
+    return "Pending"
+
 
 def build_rows(processed_records, show_ignored):
     rows = []
@@ -790,6 +816,7 @@ def build_rows(processed_records, show_ignored):
             row["MA_Offeror_ISIN"]   = r.get("_ma_offeror_isin", "")
             row["MA_Offeror_Ticker"] = r.get("_ma_offeror_ticker", "")
             row["MA_Close_Date"]     = r.get("closedt", "")
+            row["ECA_Status"]        = derive_eca_status(r, r.get("eventcd","").upper())
 
         elif cl["event_type"] == "Merger & Acquisition":
             row["Event_Type"]        = "Merger & Acquisition"
@@ -811,10 +838,11 @@ def build_rows(processed_records, show_ignored):
             row["MA_Exp_Completion"] = cl["ma_exp_completion"]
             row["MA_Merger_Status"]  = cl["ma_merger_status"]
             row["MA_Close_Date"]     = r.get("closedt", "")
+            row["ECA_Status"]        = derive_eca_status(r, r.get("eventcd","").upper())
 
         elif cl["event_type"] in ("Spin-Off", "Stock Distribution"):
             row["Event_Type"]        = cl["event_type"]
-            row["Subtype"]           = cl["ma_subtype"]   # "Demerger", "Share Distribution", "Announcement"
+            row["Subtype"]           = cl["ma_subtype"]
             row["Deal_Type"]         = cl["ma_deal_type"]
             row["MA_Mand_Vol"]       = cl["ma_mandatory_voluntary"]
             row["ECA_Stock_Ratio"]    = cl["eca_stock_ratio"]
@@ -826,6 +854,7 @@ def build_rows(processed_records, show_ignored):
             row["MA_Merger_Status"]  = cl["ma_merger_status"]
             row["MA_Cash_Terms"]     = cl["ma_cash_terms"]
             row["MA_Cash_Terms_Currency"]  = cl["ma_cash_terms_currency"]
+            row["ECA_Status"]        = derive_eca_status(r, r.get("eventcd","").upper())
 
         elif is_election:
             row["Event_Type"]        = "Cash or Stock Dividend"
@@ -1117,6 +1146,7 @@ with tab1:
         "MA_Effective_Date", "MA_Exp_Completion",
         "MA_Merger_Status",
         "MA_Close_Date",
+        "ECA_Status",
         "New_Name", "Old_Name", "ID_Change_Date",
         "New_Local_Code", "Old_Local_Code",
         "New_Exchg", "Old_Exchg",
@@ -1167,6 +1197,7 @@ with tab1:
             "MA_Exp_Completion":    st.column_config.TextColumn("Exp. Completion",      width=125),
             "MA_Merger_Status":     st.column_config.TextColumn("Merger Status",        width=100),
             "MA_Close_Date":        st.column_config.TextColumn("Offer Expiry / Close Date", width=150),
+            "ECA_Status":           st.column_config.TextColumn("ECA Status",           width=100),
             "New_Name":             st.column_config.TextColumn("New Name",             width=200),
             "Old_Name":             st.column_config.TextColumn("Old Name",             width=200),
             "ID_Change_Date":       st.column_config.TextColumn("Change Date",          width=120),
@@ -1261,6 +1292,7 @@ with tab3:
                     "Unconditional_Date":  sel.get("unconditionaldt"),
                     "Compulsory_Acq_Date": sel.get("compulsoryacqdt"),
                     "Offer_Expiry_Close_Date": sel.get("MA_Close_Date"),
+                    "ECA_Status":          sel.get("ECA_Status"),
                     "New_Name":            sel.get("New_Name"),
                     "Old_Name":            sel.get("Old_Name"),
                     "ID_Change_Date":      sel.get("ID_Change_Date"),
