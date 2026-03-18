@@ -186,7 +186,7 @@ def classify_event(row: dict) -> dict:
             result["eca_stock_ratio"] = f"{ratio:.6f}" if ratio else ""
             result["eca_stock_terms"] = fmt_stock_terms(rationew, ratioold) if ratio else ""
         elif paytypecd == "D":
-            result["ma_deal_type"] = "Debenture"
+            result["ignore"] = True  # Debenture legs ignored
         else:
             result["ma_deal_type"] = paytypecd
         return result
@@ -611,7 +611,9 @@ def merge_events(records_list):
         if eventcd == "TKOVR" and len(set(option_ids)) > 1:
             base = dict(sorted(group, key=lambda r: str(r.get("optionid", "")))[0])
             base["_is_tkovr_election"] = True
-            paytypes = sorted(set(r.get("paytypecd", "") for r in group))
+            # Filter out Debenture legs — ignored
+            group = [r for r in group if r.get("paytypecd", "") != "D"]
+            paytypes = sorted(set(r.get("paytypecd", "") for r in group if r.get("paytypecd", "") != "D"))
             base["_tkovr_paytypes"] = paytypes
 
             cash_opt  = next((r for r in group if r.get("paytypecd") == "C"), None)
@@ -772,7 +774,7 @@ def build_rows(processed_records, show_ignored):
 
         if is_tkovr_election:
             paytypes = r.get("_tkovr_paytypes", [])
-            label_map = {"C": "Cash", "S": "Stock", "B": "Cash & Stock", "D": "Debenture"}
+            label_map = {"C": "Cash", "S": "Stock", "B": "Cash & Stock"}
             deal_type_label = " + ".join(label_map.get(p, p) for p in paytypes)
             row["Event_Type"]        = "Merger & Acquisition"
             row["Subtype"]           = "Election"
@@ -966,7 +968,6 @@ if not fetch_btn:
         | Merger & Acquisition | — | Cash | `eventcd`=TKOVR, `paytypecd`=C |
         | Merger & Acquisition | — | Stock | `eventcd`=TKOVR, `paytypecd`=S |
         | Merger & Acquisition | — | Cash & Stock | `eventcd`=TKOVR, `paytypecd`=B |
-        | Merger & Acquisition | — | Debenture | `eventcd`=TKOVR, `paytypecd`=D |
         | Merger & Acquisition | Election | Cash + Stock + … | `eventcd`=TKOVR, multiple optionids |
         | Merger & Acquisition | — | Stock | `eventcd`=MRGR, `paytypecd`=S |
         | Merger & Acquisition | Announcement | — | `eventcd`=ANN, `relatedeventcd`=MRGR/TKOVR |
