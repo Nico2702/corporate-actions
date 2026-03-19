@@ -397,6 +397,10 @@ def classify_event(row: dict) -> dict:
         result["dividend_currency"] = ratecurencd
         if is_br and marker == "ISC":
             result["subtype"] = "Interest on Capital"; result["tax_marker"] = "GROSS"; result["adjusted_wht"] = "17.5%"
+        # UK REIT PID override
+        if row.get("_is_pid"):
+            result["subtype"]       = "Property Income Distribution"
+            result["adjusted_wht"]  = "20%"
         result["depositary_fee"]  = depositary_fee
         result["tax_relief_fee"]  = tax_relief_fee
         return result
@@ -577,6 +581,19 @@ def merge_events(records_list):
             key = (r.get("eventid"), r.get("operationalmic"))
             if key not in div_keys and (r.get("frankdiv") or r.get("conduitfrgnincome")):
                 r["_standalone_frank"] = True
+
+    # Pre-pass: mark DIV records as PID if:
+    #   1. structcd=REIT AND operationalmic=XLON, OR
+    #   2. there is a PID record with the same eventid
+    pid_eventids = {r.get("eventid") for r in records_list
+                    if (r.get("eventcd") or "").upper() == "PID"}
+    for r in records_list:
+        if (r.get("eventcd") or "").upper() in ("DIV", "DIVIF"):
+            is_uk_reit = ((r.get("structcd") or "").upper() == "REIT"
+                          and (r.get("operationalmic") or "").upper() == "XLON")
+            has_pid_partner = r.get("eventid") in pid_eventids
+            if is_uk_reit or has_pid_partner:
+                r["_is_pid"] = True
 
     groups = defaultdict(list)
     for r in records_list:
