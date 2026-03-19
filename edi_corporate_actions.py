@@ -1198,7 +1198,7 @@ with tab1:
         "New_Trading_CCY", "Old_Trading_CCY",
     ]
     meta_display = [
-        "Creation_Date",
+        "REIT_Flag", "Creation_Date",
         "feedgendate", "evtactioncd", "lstactioncd", "ntsactioncd",
         "eventid", "optionid", "isin", "issuername", "operationalmic",
     ]
