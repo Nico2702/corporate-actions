@@ -784,7 +784,7 @@ MA_FIELDS = [
 DIV_FIELDS = ["Dividend_Amount","Frankdiv","CFI","Tax_Marker","Adjusted_WHT","Depositary_Fee","Tax_Relief_Fee","Dividend_Currency",
               "Stock_Div_Pct","Stock_Div_Ratio","Split_Ratio","Split_Terms",
               "Sub_Price","Sub_Currency","Sub_Ratio","Default_Option",
-              "Creation_Date"]
+              "REIT_Flag","Creation_Date"]
 
 def derive_eca_status(r, eventcd):
     """Derive ECA_Status for M&A and Spin-Off events."""
@@ -966,6 +966,8 @@ def build_rows(processed_records, show_ignored):
         row["_ignored"] = cl["ignore"]
         # Creation_Date — universal across all event types
         row["Creation_Date"] = r.get("eventcreatedt", "")
+        # REIT_Flag — True if structcd=REIT
+        row["REIT_Flag"] = (r.get("structcd") or "").upper() == "REIT"
         # Evt_Status — human-readable action code
         _act = (r.get("evtactioncd") or "").upper()
         row["Evt_Status"] = {"I": "New", "U": "Updated", "D": "Deleted", "C": "Cancelled"}.get(_act, _act)
@@ -1253,6 +1255,7 @@ with tab1:
             "Old_Currency":         st.column_config.TextColumn("Old Currency",         width=90),
             "New_Trading_CCY":      st.column_config.TextColumn("New Trading CCY",      width=110),
             "Old_Trading_CCY":      st.column_config.TextColumn("Old Trading CCY",      width=110),
+            "REIT_Flag":            st.column_config.CheckboxColumn("REIT",                 width=70),
             "Creation_Date":        st.column_config.TextColumn("Creation Date",        width=130),
             "feedgendate":          st.column_config.TextColumn("Feed Gen Date",         width=130),
             "evtactioncd":          st.column_config.TextColumn("Evt Action",            width=80),
@@ -1400,6 +1403,7 @@ with tab3:
                 "Ex_Date":       sel.get("exdt"),
                 "Pay_Date":      sel.get("paydt"),
                 "Record_Date":   sel.get("recorddt"),
+                "REIT_Flag":     sel.get("REIT_Flag"),
                 "Creation_Date": sel.get("Creation_Date"),
                 "Feed_Gen_Date": sel.get("feedgendate"),
                 "Evt_Action":    sel.get("evtactioncd"),
