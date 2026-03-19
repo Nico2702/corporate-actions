@@ -1314,6 +1314,7 @@ with tab3:
                     "Event_Type":          sel.get("Event_Type"),
                     "Subtype":             sel.get("Subtype"),
                     "Deal_Type":           sel.get("Deal_Type"),
+                    "REIT_Flag":           sel.get("REIT_Flag"),
                     "Mandatory_Voluntary": sel.get("MA_Mand_Vol"),
                 }
                 if evt == "Merger & Acquisition":
@@ -1358,6 +1359,7 @@ with tab3:
                 st.json({k: v for k, v in {
                     "Event_Type":      sel.get("Event_Type"),
                     "Subtype":         sel.get("Subtype"),
+                    "REIT_Flag":       sel.get("REIT_Flag"),
                     "ID_Change_Date":  sel.get("ID_Change_Date"),
                     "New_Name":        sel.get("New_Name"),
                     "Old_Name":        sel.get("Old_Name"),
@@ -1378,6 +1380,7 @@ with tab3:
                 st.json({k: v for k, v in {
                     "Event_Type":        sel.get("Event_Type"),
                     "Subtype":           sel.get("Subtype"),
+                    "REIT_Flag":         sel.get("REIT_Flag"),
                     "Dividend_Amount":   sel.get("Dividend_Amount"),
                     "Tax_Marker":        sel.get("Tax_Marker"),
                     "Adjusted_WHT":      sel.get("Adjusted_WHT"),
@@ -1403,7 +1406,6 @@ with tab3:
                 "Ex_Date":       sel.get("exdt"),
                 "Pay_Date":      sel.get("paydt"),
                 "Record_Date":   sel.get("recorddt"),
-                "REIT_Flag":     sel.get("REIT_Flag"),
                 "Creation_Date": sel.get("Creation_Date"),
                 "Feed_Gen_Date": sel.get("feedgendate"),
                 "Evt_Action":    sel.get("evtactioncd"),
@@ -1432,7 +1434,7 @@ with tab3:
                             "New_ISIN", "Old_ISIN",
                             "New_Currency", "Old_Currency",
                             "New_Trading_CCY", "Old_Trading_CCY",
-                            "Creation_Date"]
+                            "REIT_Flag", "Creation_Date"]
             st.json({col: sel.get(col, "") for col in derived_cols})
 
 # ── Export ────────────────────────────────────────────────────────────────────
