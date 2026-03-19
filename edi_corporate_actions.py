@@ -359,8 +359,8 @@ def classify_event(row: dict) -> dict:
             result["subtype"] = "Annual"
         return result
 
-    # ── DIV / DIVIF / PID ────────────────────────────────────────────────────
-    if eventcd in {"DIV", "DIVIF", "PID"}:
+    # ── DIV / DIVIF / DRIP / PID ─────────────────────────────────────────────
+    if eventcd in {"DIV", "DIVIF", "DRIP", "PID"}:
         if marker == "SPL":
             result["event_type"] = "Special Dividend"
         elif marker == "MEM":
@@ -589,8 +589,27 @@ def merge_events(records_list):
             merged.append(group[0])
             continue
 
-        # Filter out DRIP records — administrative only, never display
-        group = [r for r in group if (r.get("eventcd") or "").upper() != "DRIP"]
+        # ── DRIP handling ─────────────────────────────────────────────────────
+        # If group has both DIV and DRIP with same eventid:
+        #   → Keep DIV as primary, discard DRIP
+        #   → If DIV has no amount, try DRIP as fallback for grossdividend/declgrossamt
+        # If group has only DRIP (standalone):
+        #   → Keep DRIP — will be classified as Cash/Special Dividend in classifier
+        div_recs  = [r for r in group if (r.get("eventcd") or "").upper() == "DIV"]
+        drip_recs = [r for r in group if (r.get("eventcd") or "").upper() == "DRIP"]
+        if div_recs and drip_recs:
+            # DIV takes priority — enrich with DRIP amount if DIV has none
+            div = div_recs[0]
+            if not div.get("grossdividend") and not div.get("declgrossamt"):
+                drip = drip_recs[0]
+                if drip.get("grossdividend"):
+                    div["grossdividend"] = drip.get("grossdividend")
+                elif drip.get("declgrossamt"):
+                    div["declgrossamt"]  = drip.get("declgrossamt")
+                    div["declcurencd"]   = drip.get("declcurencd") or div.get("declcurencd") or ""
+            group = [r for r in group if (r.get("eventcd") or "").upper() != "DRIP"]
+        # standalone DRIP (no DIV in group) — keep as-is, falls through to classifier
+
         if not group:
             continue
         if len(group) == 1:
