@@ -446,6 +446,8 @@ def classify_event(row: dict) -> dict:
                 result["subtype"] = "Post-Merger"
             elif related == "DMRGR":
                 result["subtype"] = "Post-Spin-Off"
+            elif related in ("CLEAN", "CORR"):
+                result["subtype"] = ""
             else:
                 result["subtype"] = related or ""
         return result
@@ -896,7 +898,7 @@ def build_rows(processed_records, show_ignored):
 
         elif is_election:
             row["Event_Type"]        = "Cash or Stock Dividend"
-            row["Subtype"]           = "Shareholder Election"
+            row["Subtype"]           = "Election"
             row["Dividend_Amount"]   = r.get("_opt1_grossdividend") or r.get("_opt1_netdividend") or ""
             row["Tax_Marker"]        = "GROSS"
             row["Dividend_Currency"] = r.get("ratecurencd", "")
