@@ -399,6 +399,7 @@ def classify_event(row: dict) -> dict:
             result["subtype"] = "Interest on Capital"; result["tax_marker"] = "GROSS"; result["adjusted_wht"] = "17.5%"
         # UK REIT PID override
         if row.get("_is_pid"):
+            result["_base_subtype"] = result.get("subtype") or ""
             result["subtype"]       = "Property Income Distribution"
             result["adjusted_wht"]  = "20%"
         result["depositary_fee"]  = depositary_fee
@@ -587,15 +588,34 @@ def merge_events(records_list):
     # Pre-pass: mark DIV records as PID if:
     #   1. structcd=REIT AND operationalmic=XLON, OR
     #   2. there is a PID record with the same eventid
-    pid_eventids = {r.get("eventid") for r in records_list
-                    if (r.get("eventcd") or "").upper() == "PID"}
+    # Also transfer propertyincomediviendportion / nonpropertyincomediviendportion from PID record
+    pid_map = {}
+    for r in records_list:
+        if (r.get("eventcd") or "").upper() == "PID":
+            key = (r.get("eventid"), r.get("operationalmic"))
+            pid_map[key] = r
+
     for r in records_list:
         if (r.get("eventcd") or "").upper() in ("DIV", "DIVIF"):
             is_uk_reit = ((r.get("structcd") or "").upper() == "REIT"
                           and (r.get("operationalmic") or "").upper() == "XLON")
-            has_pid_partner = r.get("eventid") in pid_eventids
+            key = (r.get("eventid"), r.get("operationalmic"))
+            has_pid_partner = key in pid_map
             if is_uk_reit or has_pid_partner:
                 r["_is_pid"] = True
+                if key in pid_map:
+                    pid_rec = pid_map[key]
+                    pid_amt = pid_rec.get("propertyincomediviendportion") or ""
+                    r["_pid_amount"] = pid_amt
+                    # Calculate non-PID as gross - PID if not explicitly provided
+                    non_pid = pid_rec.get("nonpropertyincomediviendportion") or ""
+                    if not non_pid and pid_amt:
+                        gross = r.get("grossdividend") or r.get("declgrossamt") or ""
+                        try:
+                            non_pid = str(round(float(gross) - float(pid_amt), 10))
+                        except (ValueError, TypeError):
+                            non_pid = ""
+                    r["_non_pid_amount"] = non_pid
 
     groups = defaultdict(list)
     for r in records_list:
@@ -971,7 +991,25 @@ def build_rows(processed_records, show_ignored):
         # Evt_Status — human-readable action code
         _act = (r.get("evtactioncd") or "").upper()
         row["Evt_Status"] = {"I": "New", "U": "Updated", "D": "Deleted", "C": "Cancelled"}.get(_act, _act)
-        rows.append(row)
+
+        # ── PID split: if PID_Amount and Non_PID_Amount both known → two rows ──
+        pid_amt     = r.get("_pid_amount") or ""
+        non_pid_amt = r.get("_non_pid_amount") or ""
+        if pid_amt and non_pid_amt and row.get("Subtype") == "Property Income Distribution":
+            # Row 1: PID portion
+            row_pid = dict(row)
+            row_pid["Dividend_Amount"] = pid_amt
+            row_pid["Adjusted_WHT"]    = "20%"
+            row_pid["Subtype"]         = "Property Income Distribution"
+            rows.append(row_pid)
+            # Row 2: Non-PID portion
+            row_non = dict(row)
+            row_non["Dividend_Amount"] = non_pid_amt
+            row_non["Adjusted_WHT"]    = ""
+            row_non["Subtype"]         = cl.get("_base_subtype") or ""
+            rows.append(row_non)
+        else:
+            rows.append(row)
     return rows
 
 
